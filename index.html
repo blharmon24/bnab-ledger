@@ -971,6 +971,28 @@
         </table>
       </div>
 
+      <!-- Budget vs Actual -->
+      <div class="card" id="budget-trend-card">
+        <div class="card-header">
+          <div class="card-title">Budget vs Actual</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <select id="budget-trend-months" onchange="buildBudgetTrendChart()" style="width:auto;font-size:12px;padding:4px 8px">
+              <option value="6">Last 6 months</option>
+              <option value="3">Last 3 months</option>
+              <option value="12">Last 12 months</option>
+            </select>
+            <div style="display:flex;gap:12px;font-size:11px;color:var(--muted)">
+              <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(124,106,247,0.7);margin-right:4px"></span>Actual</span>
+              <span><span style="display:inline-block;width:10px;height:3px;background:var(--accent2);margin-right:4px;vertical-align:middle"></span>Budget</span>
+            </div>
+          </div>
+        </div>
+        <div id="budget-trend-empty" style="display:none;padding:32px;text-align:center;color:var(--muted);font-size:13px">
+          No budgets set yet. Go to <strong style="color:var(--accent)">Categories</strong> to add monthly budget targets.
+        </div>
+        <div id="budget-trend-charts" style="display:flex;flex-direction:column;gap:24px"></div>
+      </div>
+
       <!-- Spending Trends -->
       <div class="card">
         <div class="card-header">
@@ -2868,6 +2890,9 @@ function loadSpending() {
     return cat?.id;
   }).filter(Boolean);
   buildSpendingTrends('spending-trends-chart', top6Ids);
+
+  // Budget vs actual chart
+  buildBudgetTrendChart();
 }
 
 // ============================================================
@@ -6225,6 +6250,163 @@ function triggerUndo() {
     undoCallback();
     undoCallback = null;
   }
+}
+
+// ============================================================
+// BUDGET VS ACTUAL TREND CHART
+// ============================================================
+function buildBudgetTrendChart() {
+  const n       = parseInt(document.getElementById('budget-trend-months')?.value || 6);
+  const budgets = loadBudgets();
+  const catMap  = Object.fromEntries(state.categories.map(c => [c.id, c]));
+
+  // Only show categories that have a budget
+  const budgetedCats = state.categories.filter(c =>
+    !c.is_income && getBudget(c.id) > 0
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  const emptyEl  = document.getElementById('budget-trend-empty');
+  const chartsEl = document.getElementById('budget-trend-charts');
+
+  if (!budgetedCats.length) {
+    if (emptyEl)  emptyEl.style.display  = 'block';
+    if (chartsEl) chartsEl.style.display = 'none';
+    return;
+  }
+  if (emptyEl)  emptyEl.style.display  = 'none';
+  if (chartsEl) chartsEl.style.display = 'flex';
+
+  // Build month labels
+  const months = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    months.push({
+      key:   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,
+      label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+    });
+  }
+
+  // Destroy old charts
+  Object.keys(charts).forEach(k => {
+    if (k.startsWith('budget-trend-')) {
+      charts[k].destroy();
+      delete charts[k];
+    }
+  });
+
+  // Build one mini chart per budgeted category
+  chartsEl.innerHTML = budgetedCats.map(cat => {
+    const budget = getBudget(cat.id);
+    return `
+      <div style="border-bottom:1px solid var(--border);padding-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="color-dot" style="background:${cat.color};width:10px;height:10px"></span>
+            <span style="font-size:13px;font-weight:500">${cat.name}</span>
+            <span style="font-size:11px;color:var(--muted)">${cat.group_name}</span>
+          </div>
+          <span style="font-size:12px;color:var(--muted)">Budget: <strong style="color:var(--text)">${fmt(budget)}/mo</strong></span>
+        </div>
+        <div style="height:100px;position:relative">
+          <canvas id="btc-${cat.id}"></canvas>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Now render each chart
+  budgetedCats.forEach(cat => {
+    const budget  = getBudget(cat.id);
+    const actuals = months.map(m =>
+      state.allTransactions
+        .filter(t => {
+          if (t.type !== 'expense') return false;
+          if (t.category_id !== cat.id) return false;
+          if (t.date.startsWith(m.key)) return true;
+          return false;
+        })
+        .reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0)
+    );
+
+    const maxVal  = Math.max(...actuals, budget * 1.2, 1);
+    const canvas  = document.getElementById(`btc-${cat.id}`);
+    if (!canvas) return;
+
+    // Color bars: green if under budget, yellow if within 15%, red if over
+    const barColors = actuals.map(a => {
+      if (a > budget)          return 'rgba(248,113,113,0.75)';
+      if (a > budget * 0.85)   return 'rgba(251,191,36,0.75)';
+      return `${cat.color}cc`;
+    });
+
+    const chartKey = `budget-trend-${cat.id}`;
+    if (charts[chartKey]) charts[chartKey].destroy();
+
+    charts[chartKey] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => m.label),
+        datasets: [
+          {
+            label: 'Actual',
+            data: actuals,
+            backgroundColor: barColors,
+            borderRadius: 4,
+            order: 2
+          },
+          {
+            label: 'Budget',
+            data: months.map(() => budget),
+            type: 'line',
+            borderColor: 'rgba(247,162,106,0.9)',
+            borderWidth: 2,
+            borderDash: [4, 3],
+            pointRadius: 0,
+            backgroundColor: 'transparent',
+            order: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                if (ctx.dataset.label === 'Budget') return ` Budget: ${fmtFull(ctx.raw)}`;
+                const over = ctx.raw - budget;
+                const suffix = over > 0
+                  ? ` (+${fmtFull(over)} over)`
+                  : over < 0
+                  ? ` (${fmtFull(Math.abs(over))} under)`
+                  : ' (on budget)';
+                return ` Actual: ${fmtFull(ctx.raw)}${suffix}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#6b6b85', font: { family: 'DM Mono', size: 10 } },
+            grid: { color: 'rgba(42,42,58,0.4)' }
+          },
+          y: {
+            min: 0,
+            max: maxVal,
+            ticks: {
+              color: '#6b6b85',
+              font: { family: 'DM Mono', size: 10 },
+              callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v)
+            },
+            grid: { color: 'rgba(42,42,58,0.4)' }
+          }
+        }
+      }
+    });
+  });
 }
 
 // ============================================================
