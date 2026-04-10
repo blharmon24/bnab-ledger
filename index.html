@@ -1764,12 +1764,20 @@
         </div>
         <input type="text" id="cat-group-input" placeholder="Or type a new group name" style="margin-top:6px">
       </div>
-      <div class="form-group">
+      <div class="form-group full">
         <label>Color</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <input type="color" id="cat-color" value="#6366f1" style="width:48px;height:38px;padding:2px;border-radius:6px;cursor:pointer">
-          <div style="display:flex;flex-wrap:wrap;gap:6px" id="color-swatches"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+          <input type="color" id="cat-color" value="#6366f1"
+            style="width:44px;height:36px;padding:2px;border-radius:6px;cursor:pointer;border:1px solid var(--border)"
+            oninput="syncColorFromPicker(this.value)">
+          <input type="text" id="cat-color-hex" placeholder="#6366f1" maxlength="7"
+            style="width:96px;font-family:var(--font-mono);font-size:13px;letter-spacing:1px"
+            oninput="syncColorFromHex(this.value)">
+          <div id="cat-color-preview"
+            style="width:36px;height:36px;border-radius:8px;background:#6366f1;border:1px solid var(--border);flex-shrink:0"></div>
+          <span style="font-size:11px;color:var(--muted)">Pick a swatch or type any hex code</span>
         </div>
+        <div id="color-swatches"></div>
       </div>
       <div class="form-group">
         <label>Type</label>
@@ -2023,6 +2031,42 @@
       <button class="btn btn-primary" onclick="confirmAndRunImport()">
         ✓ Yes, import into this account
       </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Group Color Picker Modal -->
+<div class="modal-overlay" id="modal-group-color">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <div class="modal-title" id="group-color-modal-title">Set Group Color</div>
+      <button class="modal-close" onclick="closeModal('modal-group-color')">✕</button>
+    </div>
+    <input type="hidden" id="group-color-target-group" value="">
+    <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:4px">
+      Choose a base color for this group. The app will automatically generate 4 shades and apply them
+      across all categories in the group — darkest to lightest by transaction volume.
+    </p>
+    <div style="display:flex;gap:10px;align-items:center;margin:16px 0">
+      <input type="color" id="group-color-picker" value="#6366f1"
+        style="width:48px;height:40px;padding:2px;border-radius:6px;cursor:pointer;border:1px solid var(--border)"
+        oninput="updateGroupColorPreview(this.value)">
+      <input type="text" id="group-color-hex" placeholder="#6366f1" maxlength="7"
+        style="width:96px;font-family:var(--font-mono);font-size:13px"
+        oninput="syncGroupHex(this.value)">
+      <div style="display:flex;gap:4px;align-items:center">
+        <span style="font-size:11px;color:var(--muted);margin-right:4px">Generated shades:</span>
+        <div id="group-shade-1" style="width:28px;height:28px;border-radius:5px;background:#a78bfa"></div>
+        <div id="group-shade-2" style="width:28px;height:28px;border-radius:5px;background:#8b5cf6"></div>
+        <div id="group-shade-3" style="width:28px;height:28px;border-radius:5px;background:#7c3aed"></div>
+        <div id="group-shade-4" style="width:28px;height:28px;border-radius:5px;background:#5b21b6"></div>
+      </div>
+    </div>
+    <div id="group-color-swatch-grid" style="margin-bottom:16px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-group-color')">Cancel</button>
+      <button class="btn btn-primary" onclick="applyGroupColor()">Apply to All Categories in Group</button>
     </div>
   </div>
 </div>
@@ -4460,12 +4504,25 @@ function renderTransactionRows(txns) {
 // CATEGORIES
 // ============================================================
 
-const PRESET_COLORS = [
-  '#6366f1','#8b5cf6','#a855f7','#ec4899','#f43f5e',
-  '#ef4444','#f97316','#f59e0b','#eab308','#84cc16',
-  '#22c55e','#10b981','#14b8a6','#06b6d4','#3b82f6',
-  '#64748b','#78716c','#6d28d9','#be185d','#0e7490'
-];
+// Grouped palette: each group has 4 shades light→dark
+const COLOR_PALETTE = {
+  'Violet':        ['#a78bfa','#8b5cf6','#7c3aed','#5b21b6'],
+  'Indigo':        ['#818cf8','#6366f1','#4f46e5','#3730a3'],
+  'Blue':          ['#60a5fa','#3b82f6','#2563eb','#1d4ed8'],
+  'Cyan':          ['#22d3ee','#06b6d4','#0891b2','#0e7490'],
+  'Teal':          ['#2dd4bf','#14b8a6','#0d9488','#0f766e'],
+  'Green':         ['#4ade80','#22c55e','#16a34a','#15803d'],
+  'Lime':          ['#a3e635','#84cc16','#65a30d','#4d7c0f'],
+  'Yellow':        ['#fde047','#eab308','#ca8a04','#a16207'],
+  'Amber':         ['#fbbf24','#f59e0b','#d97706','#b45309'],
+  'Orange':        ['#fb923c','#f97316','#ea580c','#c2410c'],
+  'Red':           ['#f87171','#ef4444','#dc2626','#b91c1c'],
+  'Pink':          ['#f472b6','#ec4899','#db2777','#be185d'],
+  'Rose':          ['#fb7185','#f43f5e','#e11d48','#be123c'],
+  'Slate':         ['#94a3b8','#64748b','#475569','#334155'],
+};
+
+const PRESET_COLORS = Object.values(COLOR_PALETTE).flat();
 
 function openNewCategoryModal() {
   document.getElementById('cat-modal-title').textContent = 'New Category';
@@ -4481,7 +4538,10 @@ function openNewCategoryModal() {
   document.getElementById('cat-budget-label').textContent = 'Monthly Budget ($)';
   document.getElementById('cat-spending-panel').style.display = 'none';
   populateCatGroupSelect();
-  buildColorSwatches();
+  const currentColor = document.getElementById('cat-color').value || '#6366f1';
+  document.getElementById('cat-color-hex').value = currentColor;
+  document.getElementById('cat-color-preview').style.background = currentColor;
+  buildColorSwatches(currentColor);
   openModal('modal-category');
 }
 
@@ -4512,23 +4572,51 @@ function syncGroupInput(sel) {
   if (sel.value) document.getElementById('cat-group-input').value = '';
 }
 
-function buildColorSwatches() {
+function buildColorSwatches(selectedColor) {
   const container = document.getElementById('color-swatches');
-  const picker = document.getElementById('cat-color');
-  container.innerHTML = PRESET_COLORS.map(c => `
-    <div onclick="document.getElementById('cat-color').value='${c}';highlightSwatch('${c}')"
-         title="${c}"
-         style="width:20px;height:20px;border-radius:4px;background:${c};cursor:pointer;border:2px solid transparent;transition:transform 0.1s"
-         data-color="${c}"
-         onmouseover="this.style.transform='scale(1.2)'"
-         onmouseout="this.style.transform='scale(1)'">
+  // Render palette grouped by color family, 4 shades per row
+  container.innerHTML = Object.entries(COLOR_PALETTE).map(([groupName, shades]) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <span style="font-size:10px;color:var(--muted);width:44px;text-align:right;flex-shrink:0">${groupName}</span>
+      ${shades.map(c => `
+        <div onclick="applySwatchColor('${c}')"
+             title="${c}"
+             style="width:24px;height:24px;border-radius:5px;background:${c};cursor:pointer;
+                    border:2px solid ${c === selectedColor ? 'white' : 'transparent'};
+                    transition:transform 0.1s;box-shadow:${c === selectedColor ? '0 0 0 1px var(--accent)' : 'none'}"
+             data-color="${c}"
+             onmouseover="this.style.transform='scale(1.15)'"
+             onmouseout="this.style.transform='scale(1)'">
+        </div>`).join('')}
     </div>`).join('');
 }
 
+function applySwatchColor(color) {
+  document.getElementById('cat-color').value     = color;
+  document.getElementById('cat-color-hex').value = color;
+  document.getElementById('cat-color-preview').style.background = color;
+  // Re-render swatches to update selection highlight
+  buildColorSwatches(color);
+}
+
+function syncColorFromPicker(value) {
+  document.getElementById('cat-color-hex').value = value;
+  document.getElementById('cat-color-preview').style.background = value;
+  buildColorSwatches(value);
+}
+
+function syncColorFromHex(value) {
+  const hex = value.startsWith('#') ? value : '#' + value;
+  // Only apply if valid 6-digit hex
+  if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+    document.getElementById('cat-color').value = hex;
+    document.getElementById('cat-color-preview').style.background = hex;
+    buildColorSwatches(hex);
+  }
+}
+
 function highlightSwatch(color) {
-  document.querySelectorAll('#color-swatches div').forEach(el => {
-    el.style.borderColor = el.dataset.color === color ? 'white' : 'transparent';
-  });
+  buildColorSwatches(color);
 }
 
 async function saveCategory() {
@@ -4595,7 +4683,10 @@ function editCategory(id) {
   document.getElementById('cat-modal-title').textContent = 'Edit Category';
   document.getElementById('cat-editing-id').value = id;
   document.getElementById('cat-name').value = cat.name;
-  document.getElementById('cat-color').value = cat.color || '#6366f1';
+  const editColor = cat.color || '#6366f1';
+  document.getElementById('cat-color').value = editColor;
+  document.getElementById('cat-color-hex').value = editColor;
+  document.getElementById('cat-color-preview').style.background = editColor;
   document.getElementById('cat-is-income').value = cat.is_income ? 'true' : 'false';
 
   // Load budget — check if periodic
@@ -4670,10 +4761,22 @@ function loadCategoriesPage() {
     const groupCats = groups[groupName].sort((a,b) => a.name.localeCompare(b.name));
     const groupTotal = groupCats.reduce((s,c) => s + (usageMap[c.id] || 0), 0);
 
+    // Find the most common color in this group as the representative color
+    const groupColor = groupCats[0]?.color || '#64748b';
+    const safeGroup  = groupName.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+
     return `
       <div class="card">
         <div class="card-header">
           <div style="display:flex;align-items:center;gap:10px">
+            <div style="position:relative;display:inline-block">
+              <div style="width:22px;height:22px;border-radius:5px;background:${groupColor};cursor:pointer;border:2px solid var(--border);flex-shrink:0;transition:border-color 0.15s"
+                title="Click to set color for all ${groupName} categories"
+                onclick="openGroupColorPicker('${safeGroup}', '${groupColor}', this)"
+                onmouseover="this.style.borderColor='var(--accent)'"
+                onmouseout="this.style.borderColor='var(--border)'">
+              </div>
+            </div>
             <div class="card-title">${groupName}</div>
             <span style="font-size:11px;color:var(--muted)">${groupCats.length} categor${groupCats.length !== 1 ? 'ies' : 'y'}</span>
           </div>
@@ -6407,6 +6510,133 @@ function buildBudgetTrendChart() {
       }
     });
   });
+}
+
+// ============================================================
+// GROUP COLOR PICKER
+// ============================================================
+
+// Generate 4 shades from a base hex color (light to dark)
+function generateShades(hex) {
+  // Parse hex to RGB
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+
+  // Convert to HSL
+  const rn = r/255, gn = g/255, bn = b/255;
+  const max = Math.max(rn,gn,bn), min = Math.min(rn,gn,bn);
+  let h, s, l = (max+min)/2;
+
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max) {
+      case rn: h = ((gn-bn)/d + (gn < bn ? 6 : 0))/6; break;
+      case gn: h = ((bn-rn)/d + 2)/6; break;
+      case bn: h = ((rn-gn)/d + 4)/6; break;
+    }
+  }
+
+  h = Math.round(h * 360);
+  s = Math.round(s * 100);
+
+  // Generate 4 shades: light, base, medium-dark, dark
+  const lightnessSteps = [75, 62, 50, 38];
+  return lightnessSteps.map(lPct => hslToHex(h, s, lPct));
+}
+
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1-l);
+  const f = n => {
+    const k = (n + h/30) % 12;
+    const color = l - a*Math.max(Math.min(k-3, 9-k, 1), -1);
+    return Math.round(255*color).toString(16).padStart(2,'0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function openGroupColorPicker(groupName, currentColor, triggerEl) {
+  document.getElementById('group-color-target-group').value = groupName;
+  document.getElementById('group-color-modal-title').textContent = `Color for "${groupName}"`;
+  document.getElementById('group-color-picker').value = currentColor;
+  document.getElementById('group-color-hex').value = currentColor;
+  updateGroupColorPreview(currentColor);
+  buildGroupColorSwatches(currentColor);
+  openModal('modal-group-color');
+}
+
+function updateGroupColorPreview(hex) {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+  document.getElementById('group-color-picker').value = hex;
+  document.getElementById('group-color-hex').value   = hex;
+  const shades = generateShades(hex);
+  shades.forEach((shade, i) => {
+    const el = document.getElementById(`group-shade-${i+1}`);
+    if (el) el.style.background = shade;
+  });
+}
+
+function syncGroupHex(value) {
+  const hex = value.startsWith('#') ? value : '#' + value;
+  if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+    document.getElementById('group-color-picker').value = hex;
+    updateGroupColorPreview(hex);
+    buildGroupColorSwatches(hex);
+  }
+}
+
+function buildGroupColorSwatches(selectedHex) {
+  const container = document.getElementById('group-color-swatch-grid');
+  container.innerHTML = Object.entries(COLOR_PALETTE).map(([name, shades]) => `
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">
+      <span style="font-size:10px;color:var(--muted);width:44px;text-align:right;flex-shrink:0">${name}</span>
+      ${shades.map(c => `
+        <div onclick="updateGroupColorPreview('${c}');buildGroupColorSwatches('${c}')"
+          title="${c}"
+          style="width:22px;height:22px;border-radius:4px;background:${c};cursor:pointer;
+                 border:2px solid ${c === selectedHex ? 'white' : 'transparent'};
+                 transition:transform 0.1s"
+          onmouseover="this.style.transform='scale(1.15)'"
+          onmouseout="this.style.transform='scale(1)'">
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+async function applyGroupColor() {
+  const groupName = document.getElementById('group-color-target-group').value;
+  const baseColor = document.getElementById('group-color-picker').value;
+  if (!groupName || !baseColor) return;
+
+  const shades = generateShades(baseColor);
+  const groupCats = state.categories
+    .filter(c => c.group_name === groupName)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!groupCats.length) { toast('No categories found in this group', 'error'); return; }
+
+  closeModal('modal-group-color');
+  toast(`Applying colors to ${groupCats.length} categories…`);
+
+  let updated = 0;
+  for (let i = 0; i < groupCats.length; i++) {
+    // Cycle through the 4 shades — if more than 4 cats, wrap around
+    const color = shades[i % shades.length];
+    try {
+      await sb.patch('categories', `id=eq.${groupCats[i].id}`, { color });
+      const idx = state.categories.findIndex(c => c.id === groupCats[i].id);
+      if (idx >= 0) state.categories[idx].color = color;
+      updated++;
+    } catch(e) {
+      console.error('Color update failed:', e);
+    }
+  }
+
+  loadCategoriesPage();
+  toast(`Updated colors for ${updated} categories in "${groupName}"`);
 }
 
 // ============================================================
