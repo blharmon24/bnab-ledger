@@ -1089,7 +1089,7 @@
           <div class="page-subtitle">all your financial accounts</div>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn btn-ghost" onclick="openModal('modal-opening-balance')">⊙ Set Opening Balances</button>
+          <button class="btn btn-ghost" onclick="setupOpeningBalanceModal();openModal('modal-opening-balance')">⊙ Set Opening Balances</button>
           <button class="btn btn-primary" onclick="openModal('modal-account')">+ Account</button>
         </div>
       </div>
@@ -4555,16 +4555,16 @@ function editRule(idx) {
   openModal('modal-rule');
 }
 
-function deleteRule(idx) {
+async function deleteRule(idx) {
   if (!confirm('Delete this rule?')) return;
   const rules = loadRules();
   rules.splice(idx, 1);
-  saveRules(rules);
+  await saveRules(rules);
   loadRulesPage();
   toast('Rule deleted');
 }
 
-function saveRule() {
+async function saveRule() {
   const keyword   = document.getElementById('rule-keyword').value.trim();
   const categoryId = document.getElementById('rule-category').value;
   const matchType = document.getElementById('rule-match-type').value;
@@ -4584,7 +4584,7 @@ function saveRule() {
     toast('Rule saved');
   }
 
-  saveRules(rules);
+  await saveRules(rules);
   closeModal('modal-rule');
   document.getElementById('rule-editing-id').value = '';
   document.getElementById('rule-modal-title').textContent = 'New Payee Rule';
@@ -4621,7 +4621,6 @@ async function applyRulesToExisting() {
 }
 
 // Hook rules into showPage
-const _origShowPage = window.showPage;
 
 // ── Bulk Select ──────────────────────────────────────────────
 let selectedTxnIds = new Set();
@@ -4988,7 +4987,7 @@ async function saveCategory() {
       if (budgetObj) budgets[targetId] = budgetObj;
       else if (budgetToStore > 0) budgets[targetId] = budgetToStore;
       else delete budgets[targetId];
-      saveBudgets(budgets);
+      await saveBudgets(budgets);
     }
 
     closeModal('modal-category');
@@ -5069,7 +5068,7 @@ async function deleteCategory(id) {
           if (budget) {
             const budgets = loadBudgets();
             budgets[savedCat.id] = budget;
-            saveBudgets(budgets);
+            await saveBudgets(budgets);
           }
 
           populateSelects();
@@ -5217,7 +5216,7 @@ function normalizePayee(raw) {
   return raw;
 }
 
-function savePayeeRule() {
+async function savePayeeRule() {
   const editingIdx = document.getElementById('payee-rule-editing-id').value;
   const keyword  = document.getElementById('payee-rule-keyword').value.trim();
   const cleanName = document.getElementById('payee-rule-clean').value.trim();
@@ -5235,7 +5234,7 @@ function savePayeeRule() {
     toast('Rule saved');
   }
 
-  savePayeeRules(rules);
+  await savePayeeRules(rules);
   closeModal('modal-payee-rule');
   document.getElementById('payee-rule-editing-id').value = '';
   document.getElementById('payee-rule-modal-title').textContent = 'New Payee Rule';
@@ -5255,11 +5254,11 @@ function editPayeeRule(idx) {
   openModal('modal-payee-rule');
 }
 
-function deletePayeeRule(idx) {
+async function deletePayeeRule(idx) {
   if (!confirm('Delete this payee rule?')) return;
   const rules = loadPayeeRules();
   rules.splice(idx, 1);
-  savePayeeRules(rules);
+  await savePayeeRules(rules);
   loadPayeesPage();
   toast('Rule deleted');
 }
@@ -5518,10 +5517,8 @@ function updateBudgetHint() {
 }
 
 // ── Patch openNewCategoryModal to hide panel ──
-const _origOpenNewCat = window.openNewCategoryModal;
 
 // ── Patch editCategory to show spending panel ──
-const _origEditCat = window.editCategory;
 
 // Override both after page load
 document.addEventListener('DOMContentLoaded', () => {}, false);
@@ -6063,7 +6060,7 @@ function editRecurring(idx) {
   document.getElementById('rec-category').value = r.category_id || '';
 }
 
-function saveRecurring() {
+async function saveRecurring() {
   const editingIdx  = document.getElementById('rec-editing-id').value;
   const payee       = document.getElementById('rec-payee').value.trim();
   const type        = document.getElementById('rec-type').value;
@@ -6084,17 +6081,17 @@ function saveRecurring() {
   if (editingIdx !== '') rules[parseInt(editingIdx)] = rule;
   else rules.push(rule);
 
-  saveRecurringRules(rules);
+  await saveRecurringRules(rules);
   closeModal('modal-recurring');
   loadRecurringPage();
   toast(editingIdx !== '' ? 'Recurring updated!' : 'Recurring saved!');
 }
 
-function deleteRecurring(idx) {
+async function deleteRecurring(idx) {
   if (!confirm('Delete this recurring rule?')) return;
   const rules = loadRecurringRules();
   rules.splice(idx, 1);
-  saveRecurringRules(rules);
+  await saveRecurringRules(rules);
   loadRecurringPage();
   toast('Recurring rule deleted');
 }
@@ -6344,56 +6341,32 @@ function closeMobileMenu() {
 // ============================================================
 // OPENING BALANCE WIZARD
 // ============================================================
-const origOpenModal2 = window.openModal;
-window.openModal = function(id) {
-  document.getElementById(id).classList.add('open');
+// Opening balance modal setup — called when that button is clicked
+function setupOpeningBalanceModal() {
+  const earliest = state.allTransactions.length
+    ? state.allTransactions.reduce((min, t) => t.date < min ? t.date : min, state.allTransactions[0].date)
+    : today();
+  const d = new Date(earliest + 'T12:00:00');
+  d.setDate(d.getDate() - 1);
+  document.getElementById('ob-date').value = d.toISOString().slice(0, 10);
 
-  if (id === 'modal-opening-balance') {
-    // Pre-fill date = day before earliest transaction
-    const earliest = state.allTransactions.length
-      ? state.allTransactions.reduce((min, t) => t.date < min ? t.date : min, state.allTransactions[0].date)
-      : today();
-    const d = new Date(earliest + 'T12:00:00');
-    d.setDate(d.getDate() - 1);
-    document.getElementById('ob-date').value = d.toISOString().slice(0, 10);
+  const balMap = {};
+  state.accounts.forEach(a => { balMap[a.id] = 0; });
+  state.allTransactions.forEach(t => {
+    if (balMap[t.account_id] !== undefined) balMap[t.account_id] += parseFloat(t.amount);
+  });
 
-    // Build account list with current computed balances
-    const balMap = {};
-    state.accounts.forEach(a => { balMap[a.id] = 0; });
-    state.allTransactions.forEach(t => {
-      if (balMap[t.account_id] !== undefined) balMap[t.account_id] += parseFloat(t.amount);
-    });
-
-    const list = document.getElementById('ob-accounts-list');
-    list.innerHTML = state.accounts.map(a => `
-      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:8px">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:500">${a.name}</div>
-          <div style="font-size:11px;color:var(--muted)">${a.type.replace('_',' ')} · current balance: ${fmtFull(balMap[a.id] || 0)}</div>
-        </div>
-        <input type="number" id="ob-bal-${a.id}" placeholder="0.00" step="0.01"
-          style="width:140px" value="">
-      </div>`).join('');
-  }
-
-  // Keep snapshot modal logic
-  if (id === 'modal-snapshot') {
-    const d = document.getElementById('snap-date');
-    if (!d.value) d.value = today();
-    const balMap = {};
-    state.allTransactions.forEach(t => {
-      if (!balMap[t.account_id]) balMap[t.account_id] = 0;
-      balMap[t.account_id] += parseFloat(t.amount);
-    });
-    const snap = document.getElementById('snap-accounts-list');
-    if (snap) snap.innerHTML = state.accounts.map(a => `
-      <div class="form-group">
-        <label>${a.name} <span style="color:var(--muted);font-size:10px">(${a.type.replace('_',' ')})</span></label>
-        <input type="number" id="snap-bal-${a.id}" placeholder="0.00" step="0.01"
-               value="${(balMap[a.id]||0).toFixed(2)}">
-      </div>`).join('');
-  }
-};
+  const list = document.getElementById('ob-accounts-list');
+  list.innerHTML = state.accounts.map(a => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:8px">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500">${a.name}</div>
+        <div style="font-size:11px;color:var(--muted)">${a.type.replace('_',' ')} · current balance: ${fmtFull(balMap[a.id] || 0)}</div>
+      </div>
+      <input type="number" id="ob-bal-${a.id}" placeholder="0.00" step="0.01"
+        style="width:140px" value="">
+    </div>`).join('');
+}
 
 async function saveOpeningBalances() {
   const date = document.getElementById('ob-date').value;
