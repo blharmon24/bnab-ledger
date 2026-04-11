@@ -96,6 +96,9 @@
     transition: all 0.15s;
     border-left: 2px solid transparent;
     letter-spacing: 0.3px;
+    -webkit-tap-highlight-color: rgba(124,106,247,0.2);
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .nav-item:hover { color: var(--text); background: rgba(124,106,247,0.06); }
@@ -653,11 +656,13 @@
 
     /* Nav items need bigger touch targets on mobile */
     .nav-item {
-      padding: 14px 20px;
-      font-size: 14px;
-      -webkit-tap-highlight-color: transparent;
+      padding: 16px 20px;
+      font-size: 15px;
+      min-height: 52px;
       touch-action: manipulation;
-      cursor: pointer;
+      -webkit-tap-highlight-color: rgba(124,106,247,0.2);
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     #main { padding: 16px; padding-top: 60px; }
@@ -738,20 +743,20 @@
       <h1>BNAB Ledger</h1>
       <span>Needs a Budget</span>
     </div>
-    <div class="nav-item active" data-page="dashboard"><span class="nav-icon">⬡</span>Dashboard</div>
-    <div class="nav-item" data-page="networth"><span class="nav-icon">↗</span>Net Worth</div>
-    <div class="nav-item" data-page="spending"><span class="nav-icon">◎</span>Spending</div>
-    <div class="nav-item" data-page="transactions"><span class="nav-icon">≡</span>Transactions</div>
-    <div class="nav-item" data-page="accounts"><span class="nav-icon">▣</span>Accounts</div>
-    <div class="nav-item" data-page="investments"><span class="nav-icon">◈</span>Investments</div>
-    <div class="nav-item" data-page="import"><span class="nav-icon">↑</span>Import CSV</div>
-    <div class="nav-item" data-page="rules"><span class="nav-icon">⚡</span>Auto-Categorize</div>
-    <div class="nav-item" data-page="categories"><span class="nav-icon">◑</span>Categories</div>
-    <div class="nav-item" data-page="payees"><span class="nav-icon">⊕</span>Payee Names</div>
+    <div class="nav-item active" role="button" tabindex="0" data-page="dashboard"><span class="nav-icon">⬡</span>Dashboard</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="networth"><span class="nav-icon">↗</span>Net Worth</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="spending"><span class="nav-icon">◎</span>Spending</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="transactions"><span class="nav-icon">≡</span>Transactions</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="accounts"><span class="nav-icon">▣</span>Accounts</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="investments"><span class="nav-icon">◈</span>Investments</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="import"><span class="nav-icon">↑</span>Import CSV</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="rules"><span class="nav-icon">⚡</span>Auto-Categorize</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="categories"><span class="nav-icon">◑</span>Categories</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="payees"><span class="nav-icon">⊕</span>Payee Names</div>
     <div class="nav-section">Tools</div>
-    <div class="nav-item" data-page="recurring"><span class="nav-icon">↻</span>Recurring</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="recurring"><span class="nav-icon">↻</span>Recurring</div>
     <div class="nav-section">Reports</div>
-    <div class="nav-item" data-page="reports"><span class="nav-icon">▦</span>Reports</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="reports"><span class="nav-icon">▦</span>Reports</div>
     <div style="flex:1"></div>
     <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
       <div id="sidebar-user-email" style="font-size:10px;color:var(--muted);text-align:center;letter-spacing:0.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
@@ -2215,17 +2220,42 @@ function showPage(page) {
   if (page === 'reports') loadReportsPage();
 }
 
-document.querySelectorAll('.nav-item').forEach(item => {
-  // Use both click and touchend for reliable mobile taps
-  const handleNavTap = (e) => {
+// Single delegated handler on sidebar — most reliable on iOS Safari
+// Handles both touch and click via event delegation
+(function() {
+  const sidebar = document.getElementById('sidebar');
+  let touchMoved = false;
+  let touchStartY = 0;
+
+  sidebar.addEventListener('touchstart', (e) => {
+    touchMoved = false;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  sidebar.addEventListener('touchmove', (e) => {
+    // Detect scrolling vs tapping
+    if (Math.abs(e.touches[0].clientY - touchStartY) > 8) {
+      touchMoved = true;
+    }
+  }, { passive: true });
+
+  sidebar.addEventListener('touchend', (e) => {
+    if (touchMoved) return; // was a scroll, not a tap
+    const navItem = e.target.closest('.nav-item');
+    if (!navItem || !navItem.dataset.page) return;
     e.preventDefault();
-    e.stopPropagation();
-    showPage(item.dataset.page);
+    showPage(navItem.dataset.page);
     closeMobileMenu();
-  };
-  item.addEventListener('click', handleNavTap);
-  item.addEventListener('touchend', handleNavTap, { passive: false });
-});
+  }, { passive: false });
+
+  // Keep click for desktop
+  sidebar.addEventListener('click', (e) => {
+    const navItem = e.target.closest('.nav-item');
+    if (!navItem || !navItem.dataset.page) return;
+    showPage(navItem.dataset.page);
+    closeMobileMenu();
+  });
+})();
 
 function typeAssets() { return ['checking','savings','investment','retirement']; }
 function typeDebts() { return ['credit_card','mortgage','loan']; }
