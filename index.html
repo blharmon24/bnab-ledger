@@ -743,20 +743,20 @@
       <h1>BNAB Ledger</h1>
       <span>Needs a Budget</span>
     </div>
-    <div class="nav-item active" role="button" tabindex="0" data-page="dashboard"><span class="nav-icon">⬡</span>Dashboard</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="networth"><span class="nav-icon">↗</span>Net Worth</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="spending"><span class="nav-icon">◎</span>Spending</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="transactions"><span class="nav-icon">≡</span>Transactions</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="accounts"><span class="nav-icon">▣</span>Accounts</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="investments"><span class="nav-icon">◈</span>Investments</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="import"><span class="nav-icon">↑</span>Import CSV</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="rules"><span class="nav-icon">⚡</span>Auto-Categorize</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="categories"><span class="nav-icon">◑</span>Categories</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="payees"><span class="nav-icon">⊕</span>Payee Names</div>
+    <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" onclick="showPage('dashboard');closeMobileMenu()"><span class="nav-icon">⬡</span>Dashboard</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="networth" onclick="showPage('networth');closeMobileMenu()"><span class="nav-icon">↗</span>Net Worth</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="spending" onclick="showPage('spending');closeMobileMenu()"><span class="nav-icon">◎</span>Spending</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="transactions" onclick="showPage('transactions');closeMobileMenu()"><span class="nav-icon">≡</span>Transactions</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="accounts" onclick="showPage('accounts');closeMobileMenu()"><span class="nav-icon">▣</span>Accounts</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="investments" onclick="showPage('investments');closeMobileMenu()"><span class="nav-icon">◈</span>Investments</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="import" onclick="showPage('import');closeMobileMenu()"><span class="nav-icon">↑</span>Import CSV</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="rules" onclick="showPage('rules');closeMobileMenu()"><span class="nav-icon">⚡</span>Auto-Categorize</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="categories" onclick="showPage('categories');closeMobileMenu()"><span class="nav-icon">◑</span>Categories</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="payees" onclick="showPage('payees');closeMobileMenu()"><span class="nav-icon">⊕</span>Payee Names</div>
     <div class="nav-section">Tools</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="recurring"><span class="nav-icon">↻</span>Recurring</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="recurring" onclick="showPage('recurring');closeMobileMenu()"><span class="nav-icon">↻</span>Recurring</div>
     <div class="nav-section">Reports</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="reports"><span class="nav-icon">▦</span>Reports</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="reports" onclick="showPage('reports');closeMobileMenu()"><span class="nav-icon">▦</span>Reports</div>
     <div style="flex:1"></div>
     <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
       <div id="sidebar-user-email" style="font-size:10px;color:var(--muted);text-align:center;letter-spacing:0.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
@@ -2220,42 +2220,7 @@ function showPage(page) {
   if (page === 'reports') loadReportsPage();
 }
 
-// Single delegated handler on sidebar — most reliable on iOS Safari
-// Handles both touch and click via event delegation
-(function() {
-  const sidebar = document.getElementById('sidebar');
-  let touchMoved = false;
-  let touchStartY = 0;
-
-  sidebar.addEventListener('touchstart', (e) => {
-    touchMoved = false;
-    touchStartY = e.touches[0].clientY;
-  }, { passive: true });
-
-  sidebar.addEventListener('touchmove', (e) => {
-    // Detect scrolling vs tapping
-    if (Math.abs(e.touches[0].clientY - touchStartY) > 8) {
-      touchMoved = true;
-    }
-  }, { passive: true });
-
-  sidebar.addEventListener('touchend', (e) => {
-    if (touchMoved) return; // was a scroll, not a tap
-    const navItem = e.target.closest('.nav-item');
-    if (!navItem || !navItem.dataset.page) return;
-    e.preventDefault();
-    showPage(navItem.dataset.page);
-    closeMobileMenu();
-  }, { passive: false });
-
-  // Keep click for desktop
-  sidebar.addEventListener('click', (e) => {
-    const navItem = e.target.closest('.nav-item');
-    if (!navItem || !navItem.dataset.page) return;
-    showPage(navItem.dataset.page);
-    closeMobileMenu();
-  });
-})();
+// Nav items use onclick directly in HTML for maximum cross-browser/mobile compatibility
 
 function typeAssets() { return ['checking','savings','investment','retirement']; }
 function typeDebts() { return ['credit_card','mortgage','loan']; }
@@ -2324,6 +2289,11 @@ async function seedDefaultCategories() {
 async function init() {
   document.getElementById('dashboard-date').textContent = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
 
+  // Load all user settings from Supabase in one round trip
+  // Wrapped in try/catch so a missing table never breaks the app
+  try { await loadAllSettings(); } catch(e) { console.warn('Settings load skipped:', e.message); }
+  _budgetsCache = null;
+
   try {
     const [accounts, categories, transactions, snapshots, holdings] = await Promise.all([
       sb.get('accounts', 'is_active=eq.true&order=name'),
@@ -2340,10 +2310,21 @@ async function init() {
     state.snapshots       = snapshots    || [];
     state.holdings        = holdings     || [];
 
-    // First-time user — no categories yet, seed defaults
-    if (state.categories.length === 0 && state.accounts.length === 0) {
-      await seedDefaultCategories();
-      showFirstTimeWelcome();
+    // First-time user check — ONLY seed if truly new
+    // Extra safety: never seed if we have any transactions
+    const isFirstTime = (
+      state.categories.length === 0 &&
+      state.accounts.length === 0 &&
+      state.allTransactions.length === 0 &&
+      getCurrentUserId() !== null
+    );
+    if (isFirstTime) {
+      // Double-check with a direct DB query to be absolutely sure
+      const catCheck = await sb.get('categories', 'select=id&limit=1');
+      if (!catCheck || catCheck.length === 0) {
+        await seedDefaultCategories();
+        showFirstTimeWelcome();
+      }
     }
 
     populateSelects();
@@ -2399,15 +2380,30 @@ function populateSelects() {
 // DASHBOARD
 // ============================================================
 // ── Budget storage (localStorage per category) ───────────────
-const BUDGET_KEY = 'finance_budgets'; // { categoryId: monthlyAmount }
+const BUDGET_KEY = 'finance_budgets';
+
+// Sync cache for budgets (loaded once on init)
+let _budgetsCache = null;
 
 function loadBudgets() {
-  try { return JSON.parse(localStorage.getItem(BUDGET_KEY) || '{}'); }
-  catch(e) { return {}; }
+  // Return cache if available (set by loadAllSettings)
+  if (_budgetsCache !== null) return _budgetsCache;
+  // Try settings cache
+  const cached = _settingsCache[BUDGET_KEY];
+  if (cached) {
+    try { _budgetsCache = JSON.parse(cached); return _budgetsCache; }
+    catch(e) {}
+  }
+  // Fall back to localStorage
+  try {
+    _budgetsCache = JSON.parse(localStorage.getItem(BUDGET_KEY) || '{}');
+    return _budgetsCache;
+  } catch(e) { return {}; }
 }
 
-function saveBudgets(budgets) {
-  localStorage.setItem(BUDGET_KEY, JSON.stringify(budgets));
+async function saveBudgets(budgets) {
+  _budgetsCache = budgets;
+  await saveSetting(BUDGET_KEY, JSON.stringify(budgets));
 }
 
 function getBudget(categoryId) {
@@ -2417,11 +2413,11 @@ function getBudget(categoryId) {
   return entry;
 }
 
-function setBudget(categoryId, amount) {
+async function setBudget(categoryId, amount) {
   const budgets = loadBudgets();
   if (!amount || amount <= 0) delete budgets[categoryId];
   else budgets[categoryId] = parseFloat(amount);
-  saveBudgets(budgets);
+  await saveBudgets(budgets);
 }
 
 // ── Sparkline ────────────────────────────────────────────────
@@ -3335,25 +3331,73 @@ async function deleteHolding(id) {
 // IMPORT
 // ============================================================
 // localStorage key for import timestamps
-function importKey(accountId) { return `last_import_${accountId}`; }
+// ── Import timestamps stored in Supabase (not localStorage) ──
+// Stored as a special transaction with payee '__import_timestamp__'
+// This way they follow you across all devices and browsers
 
-function saveImportTimestamp(accountId) {
-  const now = new Date();
-  localStorage.setItem(importKey(accountId), now.toISOString());
+async function saveImportTimestamp(accountId) {
+  const now = new Date().toISOString();
+  try {
+    // Check if a timestamp record already exists for this account
+    const existing = await sb.get(
+      'transactions',
+      `account_id=eq.${accountId}&payee=eq.__import_timestamp__&select=id`
+    );
+    if (existing && existing.length > 0) {
+      // Update existing
+      await sb.patch('transactions', `id=eq.${existing[0].id}`, { memo: now });
+    } else {
+      // Create new timestamp record
+      await sb.post('transactions', withUserId({
+        account_id:  accountId,
+        date:        today(),
+        payee:       '__import_timestamp__',
+        memo:        now,
+        amount:      0.00,
+        type:        'expense',
+        category_id: null
+      }));
+    }
+    // Update local cache
+    if (!state._importTimestamps) state._importTimestamps = {};
+    state._importTimestamps[accountId] = now;
+  } catch(e) {
+    console.warn('Could not save import timestamp:', e.message);
+    // Fall back to localStorage
+    localStorage.setItem(`last_import_${accountId}`, now);
+  }
 }
 
-function getImportTimestamp(accountId) {
-  const raw = localStorage.getItem(importKey(accountId));
+async function getImportTimestamp(accountId) {
+  // Check local cache first
+  if (state._importTimestamps && state._importTimestamps[accountId]) {
+    return new Date(state._importTimestamps[accountId]);
+  }
+  // Try to find timestamp record in transactions
+  const tsRecord = state.allTransactions.find(
+    t => t.account_id === accountId && t.payee === '__import_timestamp__'
+  );
+  if (tsRecord && tsRecord.memo) return new Date(tsRecord.memo);
+  // Fall back to localStorage for backward compat
+  const raw = localStorage.getItem(`last_import_${accountId}`);
   return raw ? new Date(raw) : null;
 }
 
-function updateLastImportInfo() {
+async function updateLastImportInfo() {
   const accountId = document.getElementById('import-account').value;
-  const ts = getImportTimestamp(accountId);
-  const textEl = document.getElementById('last-import-text');
-  const hintEl = document.getElementById('last-import-hint');
+  const textEl    = document.getElementById('last-import-text');
+  const hintEl    = document.getElementById('last-import-hint');
 
-  if (!ts) {
+  if (!accountId) {
+    textEl.textContent = 'Select an account above';
+    textEl.style.color = 'var(--muted)';
+    hintEl.textContent = '';
+    return;
+  }
+
+  const ts = await getImportTimestamp(accountId);
+
+  if (!ts || isNaN(ts.getTime())) {
     textEl.textContent = 'No imports yet for this account';
     textEl.style.color = 'var(--muted)';
     hintEl.textContent = '';
@@ -3367,15 +3411,13 @@ function updateLastImportInfo() {
   textEl.textContent = fmtTs;
   textEl.style.color = 'var(--text)';
 
-  // Suggest date range for next export
-  const nextDay = new Date(ts);
-  nextDay.setDate(nextDay.getDate());
-  const rangeStr = nextDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const rangeStr = ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   hintEl.textContent = `→ Export your bank CSV starting from ${rangeStr}`;
 }
 
 function loadImportPage() {
   const sel = document.getElementById('import-account');
+  // Filter out timestamp pseudo-accounts from the import selector
   sel.innerHTML = state.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
   updateLastImportInfo();
 }
@@ -3865,8 +3907,8 @@ async function runQFXImport() {
   }
 
   // ── Save timestamp & reload ──
-  saveImportTimestamp(accountId);
-  updateLastImportInfo();
+  await saveImportTimestamp(accountId);
+  await updateLastImportInfo();
 
   state.allTransactions = await fetchAllTransactions();
 
@@ -4013,8 +4055,8 @@ async function runCSVImport() {
     log.innerHTML = `Saving… ${imported} of ${toInsert.length}`;
   }
 
-  saveImportTimestamp(accountId);
-  updateLastImportInfo();
+  await saveImportTimestamp(accountId);
+  await updateLastImportInfo();
 
   state.allTransactions = await fetchAllTransactions();
 
@@ -4322,12 +4364,14 @@ window.openModal = function(id) {
 const RULES_KEY = 'finance_payee_rules';
 
 function loadRules() {
+  const cached = _settingsCache[RULES_KEY];
+  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
   try { return JSON.parse(localStorage.getItem(RULES_KEY) || '[]'); }
   catch(e) { return []; }
 }
 
-function saveRules(rules) {
-  localStorage.setItem(RULES_KEY, JSON.stringify(rules));
+async function saveRules(rules) {
+  await saveSetting(RULES_KEY, JSON.stringify(rules));
 }
 
 function matchesRule(payee, rule) {
@@ -5052,12 +5096,14 @@ function loadCategoriesPage() {
 const PAYEE_RULES_KEY = 'finance_payee_normalize';
 
 function loadPayeeRules() {
+  const cached = _settingsCache[PAYEE_RULES_KEY];
+  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
   try { return JSON.parse(localStorage.getItem(PAYEE_RULES_KEY) || '[]'); }
   catch(e) { return []; }
 }
 
-function savePayeeRules(rules) {
-  localStorage.setItem(PAYEE_RULES_KEY, JSON.stringify(rules));
+async function savePayeeRules(rules) {
+  await saveSetting(PAYEE_RULES_KEY, JSON.stringify(rules));
 }
 
 // Apply normalization rules to a raw payee string
@@ -5849,7 +5895,7 @@ async function fetchAllTransactions() {
   while (true) {
     const batch = await sb.get(
       'transactions',
-      `order=date.desc&limit=${pageSize}&offset=${offset}`
+      `order=date.desc&limit=${pageSize}&offset=${offset}&payee=neq.__import_timestamp__`
     );
     if (!batch || !batch.length) break;
     all = all.concat(batch);
@@ -5867,12 +5913,14 @@ async function fetchAllTransactions() {
 const RECURRING_KEY = 'bnab_recurring_rules';
 
 function loadRecurringRules() {
+  const cached = _settingsCache[RECURRING_KEY];
+  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
   try { return JSON.parse(localStorage.getItem(RECURRING_KEY) || '[]'); }
   catch(e) { return []; }
 }
 
-function saveRecurringRules(rules) {
-  localStorage.setItem(RECURRING_KEY, JSON.stringify(rules));
+async function saveRecurringRules(rules) {
+  await saveSetting(RECURRING_KEY, JSON.stringify(rules));
 }
 
 function openNewRecurringModal() {
@@ -6296,16 +6344,15 @@ async function exportAllData() {
       sb.get('portfolio_holdings', 'order=ticker')
     ]);
 
+    // Get settings from Supabase
+    const settings = await sb.get('user_settings', 'select=key,value') || [];
+    const settingsObj = Object.fromEntries(settings.map(s => [s.key, tryParseJSON(s.value)]));
+
     const backup = {
       exported_at: new Date().toISOString(),
       app: 'BNAB Ledger',
       accounts, categories, transactions, holdings,
-      localStorage: {
-        budgets:        localStorage.getItem('finance_budgets'),
-        payeeRules:     localStorage.getItem('finance_payee_normalize'),
-        categoryRules:  localStorage.getItem('finance_payee_rules'),
-        recurring:      localStorage.getItem('bnab_recurring_rules')
-      }
+      settings: settingsObj
     };
 
     const json = JSON.stringify(backup, null, 2);
@@ -6936,6 +6983,8 @@ async function doLogout() {
   localStorage.removeItem('bnab_session');
   // Reset state
   state = { accounts:[], categories:[], transactions:[], allTransactions:[], snapshots:[], holdings:[], userId: null };
+  clearSettingsCache();
+  _budgetsCache = null;
   showLoginScreen();
   toast('Signed out');
 }
@@ -6993,6 +7042,96 @@ async function tryRestoreSession() {
     localStorage.removeItem('bnab_session');
   }
   return false;
+}
+
+// ============================================================
+// USER SETTINGS — stored in Supabase, synced across all devices
+// ============================================================
+
+// In-memory cache so we don't hit Supabase on every read
+const _settingsCache = {};
+
+async function saveSetting(key, value) {
+  const uid = getCurrentUserId();
+  const strValue = typeof value === 'string' ? value : JSON.stringify(value);
+
+  // Always update local cache immediately
+  _settingsCache[key] = strValue;
+
+  if (!uid) {
+    localStorage.setItem(key, strValue);
+    return;
+  }
+
+  // Save to Supabase — completely silent on failure, never throws
+  try {
+    await sb.query('user_settings', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: uid, key, value: strValue }),
+      headers: { 'Prefer': 'return=minimal,resolution=merge-duplicates' }
+    });
+  } catch(e) {
+    // Silently fall back to localStorage — never propagate this error
+    localStorage.setItem(key, strValue);
+    console.warn(`Setting "${key}" saved to localStorage (Supabase unavailable)`);
+  }
+}
+
+async function loadSetting(key, defaultValue = null) {
+  // Return from cache if available
+  if (_settingsCache[key] !== undefined) {
+    try { return JSON.parse(_settingsCache[key]); }
+    catch(e) { return _settingsCache[key]; }
+  }
+
+  const uid = getCurrentUserId();
+  if (!uid) {
+    // Not logged in — use localStorage
+    const raw = localStorage.getItem(key);
+    return raw ? tryParseJSON(raw) : defaultValue;
+  }
+
+  try {
+    const rows = await sb.get('user_settings', `key=eq.${key}&select=value`);
+    if (rows && rows.length > 0) {
+      _settingsCache[key] = rows[0].value;
+      return tryParseJSON(rows[0].value);
+    }
+    // Not in Supabase — check localStorage for migration
+    const local = localStorage.getItem(key);
+    if (local) {
+      // Migrate to Supabase
+      await saveSetting(key, local);
+      localStorage.removeItem(key);
+      return tryParseJSON(local);
+    }
+    return defaultValue;
+  } catch(e) {
+    console.warn(`Failed to load setting "${key}":`, e.message);
+    const raw = localStorage.getItem(key);
+    return raw ? tryParseJSON(raw) : defaultValue;
+  }
+}
+
+// Load all settings at once on init (one round trip)
+async function loadAllSettings() {
+  const uid = getCurrentUserId();
+  if (!uid) return;
+  try {
+    const rows = await sb.get('user_settings', 'select=key,value');
+    (rows || []).forEach(r => { _settingsCache[r.key] = r.value; });
+  } catch(e) {
+    console.warn('Failed to load settings:', e.message);
+  }
+}
+
+function tryParseJSON(str) {
+  try { return JSON.parse(str); }
+  catch(e) { return str; }
+}
+
+function clearSettingsCache() {
+  Object.keys(_settingsCache).forEach(k => delete _settingsCache[k]);
 }
 
 // ============================================================
