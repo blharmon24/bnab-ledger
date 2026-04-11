@@ -749,7 +749,7 @@
     <div class="nav-item" role="button" tabindex="0" data-page="transactions" onclick="showPage('transactions');closeMobileMenu()"><span class="nav-icon">≡</span>Transactions</div>
     <div class="nav-item" role="button" tabindex="0" data-page="accounts" onclick="showPage('accounts');closeMobileMenu()"><span class="nav-icon">▣</span>Accounts</div>
     <div class="nav-item" role="button" tabindex="0" data-page="investments" onclick="showPage('investments');closeMobileMenu()"><span class="nav-icon">◈</span>Investments</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="import" onclick="showPage('import');closeMobileMenu()"><span class="nav-icon">↑</span>Import CSV</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="import" onclick="showPage('import');closeMobileMenu()"><span class="nav-icon">↑</span>Bank Imports</div>
     <div class="nav-item" role="button" tabindex="0" data-page="rules" onclick="showPage('rules');closeMobileMenu()"><span class="nav-icon">⚡</span>Auto-Categorize</div>
     <div class="nav-item" role="button" tabindex="0" data-page="categories" onclick="showPage('categories');closeMobileMenu()"><span class="nav-icon">◑</span>Categories</div>
     <div class="nav-item" role="button" tabindex="0" data-page="payees" onclick="showPage('payees');closeMobileMenu()"><span class="nav-icon">⊕</span>Payee Names</div>
@@ -1160,7 +1160,7 @@
     <div class="page" id="page-import">
       <div class="page-header">
         <div>
-          <div class="page-title">Import CSV</div>
+          <div class="page-title">Bank Imports</div>
           <div class="page-subtitle">YNAB exports or bank statements</div>
         </div>
       </div>
@@ -3369,15 +3369,26 @@ async function saveImportTimestamp(accountId) {
 }
 
 async function getImportTimestamp(accountId) {
-  // Check local cache first
+  // Check local cache first (set after a successful import this session)
   if (state._importTimestamps && state._importTimestamps[accountId]) {
     return new Date(state._importTimestamps[accountId]);
   }
-  // Try to find timestamp record in transactions
-  const tsRecord = state.allTransactions.find(
-    t => t.account_id === accountId && t.payee === '__import_timestamp__'
-  );
-  if (tsRecord && tsRecord.memo) return new Date(tsRecord.memo);
+  // Query Supabase directly — timestamp records are filtered out of allTransactions
+  try {
+    const rows = await sb.get(
+      'transactions',
+      `account_id=eq.${accountId}&payee=eq.__import_timestamp__&select=memo&limit=1`
+    );
+    if (rows && rows.length > 0 && rows[0].memo) {
+      const ts = new Date(rows[0].memo);
+      // Cache it
+      if (!state._importTimestamps) state._importTimestamps = {};
+      state._importTimestamps[accountId] = rows[0].memo;
+      return ts;
+    }
+  } catch(e) {
+    console.warn('Could not fetch import timestamp:', e.message);
+  }
   // Fall back to localStorage for backward compat
   const raw = localStorage.getItem(`last_import_${accountId}`);
   return raw ? new Date(raw) : null;
@@ -3921,6 +3932,10 @@ async function runQFXImport() {
   log.innerHTML = parts;
   toast(`Imported ${imported} transactions, ${dupeCount} duplicates skipped`);
   loadDashboard();
+  // Refresh transaction list if it's currently visible
+  if (document.getElementById('page-transactions').classList.contains('active')) {
+    filterTransactions();
+  }
 }
 
 // ── CSV IMPORT ────────────────────────────────────────────────
@@ -4070,6 +4085,10 @@ async function runCSVImport() {
   log.innerHTML = parts;
   toast(`Imported ${imported} transactions, ${dupeCount} duplicates skipped`);
   loadDashboard();
+  // Refresh transaction list if it's currently visible
+  if (document.getElementById('page-transactions').classList.contains('active')) {
+    filterTransactions();
+  }
 }
 
 // ============================================================
