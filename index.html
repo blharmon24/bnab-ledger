@@ -2310,6 +2310,23 @@ async function init() {
     state.snapshots       = snapshots    || [];
     state.holdings        = holdings     || [];
 
+    // Clean up any legacy __import_timestamp__ fake transactions
+    const fakeTs = state.allTransactions.filter(t => t.payee === '__import_timestamp__');
+    if (fakeTs.length > 0) {
+      // Migrate timestamps to user_settings then delete the fake records
+      for (const t of fakeTs) {
+        if (t.memo && t.account_id) {
+          const key = `last_import_${t.account_id}`;
+          await saveSetting(key, t.memo);
+          if (!state._importTimestamps) state._importTimestamps = {};
+          state._importTimestamps[t.account_id] = t.memo;
+        }
+        try { await sb.delete('transactions', `id=eq.${t.id}`); } catch(e) {}
+      }
+      // Remove from local state
+      state.allTransactions = state.allTransactions.filter(t => t.payee !== '__import_timestamp__');
+    }
+
     // First-time user check — ONLY seed if truly new
     // Extra safety: never seed if we have any transactions
     const isFirstTime = (
@@ -3337,60 +3354,42 @@ async function deleteHolding(id) {
 
 async function saveImportTimestamp(accountId) {
   const now = new Date().toISOString();
-  try {
-    // Check if a timestamp record already exists for this account
-    const existing = await sb.get(
-      'transactions',
-      `account_id=eq.${accountId}&payee=eq.__import_timestamp__&select=id`
-    );
-    if (existing && existing.length > 0) {
-      // Update existing
-      await sb.patch('transactions', `id=eq.${existing[0].id}`, { memo: now });
-    } else {
-      // Create new timestamp record
-      await sb.post('transactions', withUserId({
-        account_id:  accountId,
-        date:        today(),
-        payee:       '__import_timestamp__',
-        memo:        now,
-        amount:      0.00,
-        type:        'expense',
-        category_id: null
-      }));
-    }
-    // Update local cache
-    if (!state._importTimestamps) state._importTimestamps = {};
-    state._importTimestamps[accountId] = now;
-  } catch(e) {
-    console.warn('Could not save import timestamp:', e.message);
-    // Fall back to localStorage
-    localStorage.setItem(`last_import_${accountId}`, now);
-  }
+  const key = `last_import_${accountId}`;
+
+  // Update local cache immediately
+  if (!state._importTimestamps) state._importTimestamps = {};
+  state._importTimestamps[accountId] = now;
+
+  // Save to user_settings (syncs across devices)
+  await saveSetting(key, now);
 }
 
 async function getImportTimestamp(accountId) {
-  // Check local cache first (set after a successful import this session)
+  const key = `last_import_${accountId}`;
+
+  // Check local state cache first
   if (state._importTimestamps && state._importTimestamps[accountId]) {
     return new Date(state._importTimestamps[accountId]);
   }
-  // Query Supabase directly — timestamp records are filtered out of allTransactions
-  try {
-    const rows = await sb.get(
-      'transactions',
-      `account_id=eq.${accountId}&payee=eq.__import_timestamp__&select=memo&limit=1`
-    );
-    if (rows && rows.length > 0 && rows[0].memo) {
-      const ts = new Date(rows[0].memo);
-      // Cache it
-      if (!state._importTimestamps) state._importTimestamps = {};
-      state._importTimestamps[accountId] = rows[0].memo;
-      return ts;
-    }
-  } catch(e) {
-    console.warn('Could not fetch import timestamp:', e.message);
+
+  // Check settings cache (loaded at login)
+  const cached = _settingsCache[key];
+  if (cached) {
+    if (!state._importTimestamps) state._importTimestamps = {};
+    state._importTimestamps[accountId] = cached;
+    return new Date(cached);
   }
-  // Fall back to localStorage for backward compat
-  const raw = localStorage.getItem(`last_import_${accountId}`);
+
+  // Load from Supabase directly
+  const val = await loadSetting(key, null);
+  if (val) {
+    if (!state._importTimestamps) state._importTimestamps = {};
+    state._importTimestamps[accountId] = val;
+    return new Date(val);
+  }
+
+  // Fall back to localStorage
+  const raw = localStorage.getItem(key);
   return raw ? new Date(raw) : null;
 }
 
@@ -5914,11 +5913,11 @@ async function fetchAllTransactions() {
   while (true) {
     const batch = await sb.get(
       'transactions',
-      `order=date.desc&limit=${pageSize}&offset=${offset}&payee=neq.__import_timestamp__`
+      `order=date.desc&limit=${pageSize}&offset=${offset}`
     );
     if (!batch || !batch.length) break;
     all = all.concat(batch);
-    if (batch.length < pageSize) break; // last page
+    if (batch.length < pageSize) break;
     offset += pageSize;
   }
 
