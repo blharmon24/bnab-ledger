@@ -3081,14 +3081,47 @@ function renderDebtTracker(balMap) {
 }
 
 async function deleteAccount(id) {
-  if (!confirm('Delete this account and all its transactions?')) return;
+  const account      = state.accounts.find(a => a.id === id);
+  if (!account) return;
+  const affectedTxns = state.allTransactions.filter(t => t.account_id === id);
+
   try {
     await sb.delete('accounts', `id=eq.${id}`);
-    state.accounts = state.accounts.filter(a => a.id !== id);
-    state.allTransactions = state.allTransactions.filter(t => t.account_id !== id);
+    state.accounts         = state.accounts.filter(a => a.id !== id);
+    state.allTransactions  = state.allTransactions.filter(t => t.account_id !== id);
     populateSelects();
     loadAccounts();
-    toast('Account deleted');
+    loadDashboard();
+
+    showUndoToast(
+      `Account "${account.name}" deleted (${affectedTxns.length} transactions removed)`,
+      async () => {
+        try {
+          // Restore account
+          const [savedAccount] = await sb.post('accounts', {
+            name:        account.name,
+            type:        account.type,
+            institution: account.institution,
+            currency:    account.currency,
+            is_active:   account.is_active
+          });
+          state.accounts.push(savedAccount);
+
+          // Restore transactions with new account id
+          for (const t of affectedTxns) {
+            const { id: _id, ...rest } = t;
+            const [saved] = await sb.post('transactions', { ...rest, account_id: savedAccount.id });
+            state.allTransactions.unshift(saved);
+          }
+          state.allTransactions.sort((a, b) => b.date.localeCompare(a.date));
+
+          populateSelects();
+          loadAccounts();
+          loadDashboard();
+          toast(`Restored "${account.name}" with ${affectedTxns.length} transactions`);
+        } catch(e) { toast('Restore failed: ' + e.message, 'error'); }
+      }
+    );
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -3144,12 +3177,26 @@ function loadInvestments() {
 }
 
 async function deleteHolding(id) {
-  if (!confirm('Delete this holding?')) return;
+  const holding = state.holdings.find(h => h.id === id);
+  if (!holding) return;
+
   try {
     await sb.delete('portfolio_holdings', `id=eq.${id}`);
     state.holdings = state.holdings.filter(h => h.id !== id);
     loadInvestments();
-    toast('Holding deleted');
+
+    showUndoToast(
+      `Holding "${holding.ticker}" deleted`,
+      async () => {
+        try {
+          const { id: _id, ...rest } = holding;
+          const [saved] = await sb.post('portfolio_holdings', rest);
+          state.holdings.push(saved);
+          loadInvestments();
+          toast(`Restored "${holding.ticker}"`);
+        } catch(e) { toast('Restore failed: ' + e.message, 'error'); }
+      }
+    );
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -4709,12 +4756,9 @@ function editCategory(id) {
 }
 
 async function deleteCategory(id) {
-  const cat = state.categories.find(c => c.id === id);
+  const cat        = state.categories.find(c => c.id === id);
+  if (!cat) return;
   const usageCount = state.allTransactions.filter(t => t.category_id === id).length;
-  const msg = usageCount > 0
-    ? `Delete "${cat?.name}"? It's used by ${usageCount} transaction${usageCount !== 1 ? 's' : ''} — they'll become uncategorized.`
-    : `Delete "${cat?.name}"?`;
-  if (!confirm(msg)) return;
 
   try {
     await sb.delete('categories', `id=eq.${id}`);
@@ -4723,7 +4767,43 @@ async function deleteCategory(id) {
     state.allTransactions.forEach(t => { if (t.category_id === id) t.category_id = null; });
     populateSelects();
     loadCategoriesPage();
-    toast('Category deleted');
+
+    showUndoToast(
+      `Category "${cat.name}" deleted${usageCount > 0 ? ` (${usageCount} transactions uncategorized)` : ''}`,
+      async () => {
+        try {
+          // Restore the category
+          const [savedCat] = await sb.post('categories', {
+            name:       cat.name,
+            group_name: cat.group_name,
+            color:      cat.color,
+            is_income:  cat.is_income
+          });
+          state.categories.push(savedCat);
+
+          // Re-categorize affected transactions with the new category id
+          if (usageCount > 0) {
+            const toReCat = state.allTransactions.filter(t => !t.category_id).slice(0, usageCount);
+            for (const t of toReCat) {
+              await sb.patch('transactions', `id=eq.${t.id}`, { category_id: savedCat.id });
+              t.category_id = savedCat.id;
+            }
+          }
+
+          // Also restore budget if it was set
+          const budget = loadBudgets()[id];
+          if (budget) {
+            const budgets = loadBudgets();
+            budgets[savedCat.id] = budget;
+            saveBudgets(budgets);
+          }
+
+          populateSelects();
+          loadCategoriesPage();
+          toast(`Restored category "${cat.name}"`);
+        } catch(e) { toast('Restore failed: ' + e.message, 'error'); }
+      }
+    );
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
