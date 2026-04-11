@@ -612,37 +612,55 @@
     display: none;
     position: fixed;
     top: 12px; left: 12px;
-    z-index: 200;
+    z-index: 300;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 8px 14px;
     cursor: pointer;
-    font-size: 18px;
+    font-size: 20px;
     color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   #sidebar-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 149;
+    background: rgba(0,0,0,0.6);
+    z-index: 198;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
+  #sidebar-overlay.open { display: block; }
 
   @media (max-width: 900px) {
-    #mobile-menu-btn { display: block; }
+    /* Hide sidebar off-screen by default on mobile */
+    #mobile-menu-btn { display: flex; align-items:center; justify-content:center; }
+
     #sidebar {
       position: fixed;
-      left: -240px;
+      left: -260px;
       top: 0; bottom: 0;
-      z-index: 150;
+      z-index: 199;
+      width: 240px;
       transition: left 0.25s ease;
-      width: 220px;
+      overflow-y: auto;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.4);
     }
     #sidebar.open { left: 0; }
-    #sidebar-overlay.open { display: block; }
-    #main { padding: 16px; padding-top: 56px; }
+
+    /* Nav items need bigger touch targets on mobile */
+    .nav-item {
+      padding: 14px 20px;
+      font-size: 14px;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+
+    #main { padding: 16px; padding-top: 60px; }
     .two-col, .three-col { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
     .stat-grid { grid-template-columns: 1fr 1fr; }
@@ -650,14 +668,15 @@
     .filter-row { flex-direction: column; }
     .filter-row input, .filter-row select { width: 100%; }
     .data-table { font-size: 11px; }
-    .data-table td, .data-table th { padding: 8px 6px; }
+    .data-table td, .data-table th { padding: 10px 8px; }
     .modal { width: 95vw !important; padding: 20px; }
-    .report-tab { padding: 6px 10px; font-size: 11px; }
+    .report-tab { padding: 8px 12px; font-size: 12px; }
   }
 
   @media (max-width: 480px) {
     .stat-grid { grid-template-columns: 1fr; }
     .page-title { font-size: 22px; }
+    .stat-value { font-size: 22px; }
   }
 </style>
 </head>
@@ -669,8 +688,8 @@
   const SUPABASE_KEY = 'sb_publishable_2chleZ28vhYAQqpW0RaNeg_0DYo_1v4';
 </script>
 
-<button id="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
-<div id="sidebar-overlay" onclick="closeMobileMenu()"></div>
+<button id="mobile-menu-btn" onclick="toggleMobileMenu()" ontouchend="event.preventDefault();toggleMobileMenu()">☰</button>
+<div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
 <!-- LOGIN SCREEN -->
 <div id="login-screen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);align-items:center;justify-content:center;flex-direction:column">
 
@@ -2197,7 +2216,15 @@ function showPage(page) {
 }
 
 document.querySelectorAll('.nav-item').forEach(item => {
-  item.addEventListener('click', () => { showPage(item.dataset.page); closeMobileMenu(); });
+  // Use both click and touchend for reliable mobile taps
+  const handleNavTap = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showPage(item.dataset.page);
+    closeMobileMenu();
+  };
+  item.addEventListener('click', handleNavTap);
+  item.addEventListener('touchend', handleNavTap, { passive: false });
 });
 
 function typeAssets() { return ['checking','savings','investment','retirement']; }
@@ -2206,6 +2233,64 @@ function typeDebts() { return ['credit_card','mortgage','loan']; }
 // ============================================================
 // INIT
 // ============================================================
+// Default categories seeded for new users
+const DEFAULT_CATEGORIES = [
+  // Income
+  { name:'Paycheck',             group_name:'Income',         color:'#22c55e', is_income:true  },
+  { name:'Freelance',            group_name:'Income',         color:'#16a34a', is_income:true  },
+  { name:'Other Income',         group_name:'Income',         color:'#15803d', is_income:true  },
+  // Housing
+  { name:'Rent / Mortgage',      group_name:'Housing',        color:'#fbbf24', is_income:false },
+  { name:'Home Insurance',       group_name:'Housing',        color:'#f59e0b', is_income:false },
+  { name:'Home Maintenance',     group_name:'Housing',        color:'#d97706', is_income:false },
+  // Food
+  { name:'Groceries',            group_name:'Food',           color:'#f87171', is_income:false },
+  { name:'Restaurants',          group_name:'Food',           color:'#ef4444', is_income:false },
+  { name:'Coffee',               group_name:'Food',           color:'#dc2626', is_income:false },
+  // Transportation
+  { name:'Car Payment',          group_name:'Transportation', color:'#60a5fa', is_income:false },
+  { name:'Gas',                  group_name:'Transportation', color:'#3b82f6', is_income:false },
+  { name:'Car Insurance',        group_name:'Transportation', color:'#2563eb', is_income:false },
+  { name:'Public Transit',       group_name:'Transportation', color:'#1d4ed8', is_income:false },
+  // Health
+  { name:'Health Insurance',     group_name:'Health',         color:'#c084fc', is_income:false },
+  { name:'Doctor / Dentist',     group_name:'Health',         color:'#a855f7', is_income:false },
+  { name:'Pharmacy',             group_name:'Health',         color:'#9333ea', is_income:false },
+  { name:'Gym',                  group_name:'Health',         color:'#7c3aed', is_income:false },
+  // Utilities
+  { name:'Electric',             group_name:'Utilities',      color:'#22d3ee', is_income:false },
+  { name:'Internet',             group_name:'Utilities',      color:'#06b6d4', is_income:false },
+  { name:'Phone',                group_name:'Utilities',      color:'#0891b2', is_income:false },
+  // Entertainment
+  { name:'Streaming',            group_name:'Entertainment',  color:'#fb923c', is_income:false },
+  { name:'Hobbies',              group_name:'Entertainment',  color:'#f97316', is_income:false },
+  { name:'Travel',               group_name:'Entertainment',  color:'#ea580c', is_income:false },
+  // Personal
+  { name:'Clothing',             group_name:'Personal',       color:'#f472b6', is_income:false },
+  { name:'Personal Care',        group_name:'Personal',       color:'#ec4899', is_income:false },
+  { name:'Gifts',                group_name:'Personal',       color:'#db2777', is_income:false },
+  // Savings & Debt
+  { name:'Emergency Fund',       group_name:'Savings & Debt', color:'#2dd4bf', is_income:false },
+  { name:'Credit Card Payment',  group_name:'Savings & Debt', color:'#14b8a6', is_income:false },
+  // Miscellaneous
+  { name:'Subscriptions',        group_name:'Miscellaneous',  color:'#94a3b8', is_income:false },
+  { name:'Other',                group_name:'Miscellaneous',  color:'#64748b', is_income:false },
+];
+
+async function seedDefaultCategories() {
+  toast('Setting up your account…');
+  const uid = getCurrentUserId();
+  try {
+    const seeded = await sb.post('categories',
+      DEFAULT_CATEGORIES.map(c => ({ ...c, user_id: uid }))
+    );
+    state.categories = seeded || [];
+    toast('Your account is ready!');
+  } catch(e) {
+    console.error('Seed failed:', e);
+  }
+}
+
 async function init() {
   document.getElementById('dashboard-date').textContent = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
 
@@ -2218,12 +2303,18 @@ async function init() {
       sb.get('portfolio_holdings', 'order=ticker')
     ]);
 
-    state.accounts = accounts || [];
-    state.categories = categories || [];
+    state.accounts        = accounts     || [];
+    state.categories      = categories   || [];
     state.allTransactions = transactions || [];
-    state.transactions = transactions || [];
-    state.snapshots = snapshots || [];
-    state.holdings = holdings || [];
+    state.transactions    = transactions || [];
+    state.snapshots       = snapshots    || [];
+    state.holdings        = holdings     || [];
+
+    // First-time user — no categories yet, seed defaults
+    if (state.categories.length === 0 && state.accounts.length === 0) {
+      await seedDefaultCategories();
+      showFirstTimeWelcome();
+    }
 
     populateSelects();
     loadDashboard();
@@ -2232,6 +2323,16 @@ async function init() {
     toast('Connection error: ' + e.message, 'error');
     console.error(e);
   }
+}
+
+function showFirstTimeWelcome() {
+  // Show a one-time welcome toast pointing them to get started
+  setTimeout(() => {
+    showUndoToast('Welcome! Your account is ready. Add your first account to get started →', () => {
+      showPage('accounts');
+      openModal('modal-account');
+    });
+  }, 500);
 }
 
 function populateSelects() {
@@ -3692,7 +3793,7 @@ async function runQFXImport() {
         for (const rule of rules) { if (matchesRule(t.payee, rule)) return rule.categoryId; }
         return null;
       })();
-      toInsert.push({
+      toInsert.push(withUserId({
         account_id:  accountId,
         date:        t.date,
         payee:       normalizePayee(t.payee) || t.payee,
@@ -3701,7 +3802,7 @@ async function runQFXImport() {
         type:        t.type,
         category_id: autocat,
         import_id:   t.fitid || rowFingerprint(t.date, t.amount, t.payee)
-      });
+      }));
     }
   }
 
@@ -3849,7 +3950,7 @@ async function runCSVImport() {
         for (const rule of rules) { if (matchesRule(insertRow.payee, rule)) return rule.categoryId; }
         return null;
       })();
-      toInsert.push({ ...insertRow, category_id: autocat2, import_id: `${fp}|${csvFpCounts[fp]}` });
+      toInsert.push(withUserId({ ...insertRow, category_id: autocat2, import_id: `${fp}|${csvFpCounts[fp]}` }));
     } else {
       dupeCount++;
     }
@@ -3958,7 +4059,7 @@ async function saveTransaction() {
       if (idx >= 0) state.allTransactions[idx] = saved || { ...state.allTransactions[idx], ...payload };
       toast('Transaction updated!');
     } else {
-      const [saved] = await sb.post('transactions', payload);
+      const [saved] = await sb.post('transactions', withUserId(payload));
       state.allTransactions.unshift(saved);
       toast('Transaction saved!');
     }
@@ -3977,7 +4078,7 @@ async function saveAccount() {
   if (!name) { toast('Account name required', 'error'); return; }
 
   try {
-    const [saved] = await sb.post('accounts', { name, type, institution });
+    const [saved] = await sb.post('accounts', withUserId({ name, type, institution }));
     state.accounts.push(saved);
     populateSelects();
     closeModal('modal-account');
@@ -4061,7 +4162,7 @@ async function saveHolding() {
       if (idx >= 0) state.holdings[idx] = saved || { ...state.holdings[idx], ...payload };
       toast('Holding updated!');
     } else {
-      const [saved] = await sb.post('portfolio_holdings', payload);
+      const [saved] = await sb.post('portfolio_holdings', withUserId(payload));
       state.holdings.push(saved);
       toast('Holding added!');
     }
@@ -4703,7 +4804,7 @@ async function saveCategory() {
       if (idx >= 0) state.categories[idx] = { ...state.categories[idx], ...payload };
       toast('Category updated!');
     } else {
-      const [saved] = await sb.post('categories', payload);
+      const [saved] = await sb.post('categories', withUserId(payload));
       state.categories.push(saved);
       targetId = saved.id;
     }
@@ -5893,11 +5994,11 @@ async function processRecurring() {
 
     const amount = rule.type === 'expense' ? -Math.abs(rule.amount) : Math.abs(rule.amount);
     try {
-      const [saved] = await sb.post('transactions', {
+      const [saved] = await sb.post('transactions', withUserId({
         date, payee: rule.payee, type: rule.type, amount,
         account_id: rule.account_id, category_id: rule.category_id || null,
         memo: rule.memo || null
-      });
+      }));
       state.allTransactions.unshift(saved);
       created++;
     } catch(e) {
@@ -6046,9 +6147,18 @@ async function saveSplit() {
 // MOBILE MENU
 // ============================================================
 function toggleMobileMenu() {
-  document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('sidebar-overlay').classList.toggle('open');
+  const sidebar  = document.getElementById('sidebar');
+  const overlay  = document.getElementById('sidebar-overlay');
+  const isOpen   = sidebar.classList.contains('open');
+  if (isOpen) {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+  } else {
+    sidebar.classList.add('open');
+    overlay.classList.add('open');
+  }
 }
+
 function closeMobileMenu() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-overlay').classList.remove('open');
@@ -6125,11 +6235,11 @@ async function saveOpeningBalances() {
 
     const amount = typeDebts().includes(acc.type) ? -Math.abs(val) : val;
     try {
-      const [saved] = await sb.post('transactions', {
+      const [saved] = await sb.post('transactions', withUserId({
         date, payee: 'Opening Balance', type: amount > 0 ? 'income' : 'expense',
         amount: parseFloat(amount.toFixed(2)), account_id: acc.id,
         category_id: null, memo: 'Opening balance set by wizard'
-      });
+      }));
       state.allTransactions.push(saved);
       created++;
     } catch(e) { console.error(e); }
@@ -6758,14 +6868,16 @@ async function doLogin() {
 
   try {
     const data = await sbAuth('token?grant_type=password', { email, password });
-    authToken = data.access_token;
+    authToken     = data.access_token;
+    state.userId  = data.user?.id || null;
 
     // Persist session so page refresh doesn't log you out
     localStorage.setItem('bnab_session', JSON.stringify({
       access_token:  data.access_token,
       refresh_token: data.refresh_token,
       expires_at:    Date.now() + (data.expires_in * 1000),
-      email:         data.user?.email || email
+      email:         data.user?.email || email,
+      user_id:       data.user?.id || null
     }));
 
     hideLoginScreen();
@@ -6793,7 +6905,7 @@ async function doLogout() {
   authToken = null;
   localStorage.removeItem('bnab_session');
   // Reset state
-  state = { accounts:[], categories:[], transactions:[], allTransactions:[], snapshots:[], holdings:[] };
+  state = { accounts:[], categories:[], transactions:[], allTransactions:[], snapshots:[], holdings:[], userId: null };
   showLoginScreen();
   toast('Signed out');
 }
@@ -6813,7 +6925,8 @@ async function tryRestoreSession() {
 
     if (Date.now() < session.expires_at - bufferMs) {
       // Token still valid
-      authToken = session.access_token;
+      authToken    = session.access_token;
+      state.userId = session.user_id || null;
       updateSidebarUser(session.email);
       return true;
     }
@@ -6828,6 +6941,20 @@ async function tryRestoreSession() {
         expires_at:    Date.now() + (data.expires_in * 1000),
         email:         session.email
       }));
+      // Fetch user id from refreshed token
+      try {
+        const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${data.access_token}` }
+        });
+        const userData = await userRes.json();
+        state.userId = userData.id || session.user_id || null;
+        // Update stored session with user_id
+        const stored = JSON.parse(localStorage.getItem('bnab_session') || '{}');
+        stored.user_id = state.userId;
+        localStorage.setItem('bnab_session', JSON.stringify(stored));
+      } catch(e2) {
+        state.userId = session.user_id || null;
+      }
       updateSidebarUser(session.email);
       return true;
     }
