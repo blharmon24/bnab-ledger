@@ -2166,10 +2166,91 @@ let state = {
   transactions: [],
   snapshots: [],
   holdings: [],
-  allTransactions: []
+  allTransactions: [],
+  userId: null,
+  _importTimestamps: {}
 };
 
 let charts = {};
+
+// ── User ID helpers — defined early so everything can use them ──
+function getCurrentUserId() {
+  return state.userId;
+}
+
+function withUserId(obj) {
+  const uid = getCurrentUserId();
+  if (!uid) {
+    console.error('withUserId called but no user is logged in');
+    throw new Error('Not authenticated — please sign in again');
+  }
+  return { ...obj, user_id: uid };
+}
+
+// ============================================================
+// USER SETTINGS — synced to Supabase across all devices
+// ============================================================
+const _settingsCache = {};
+
+async function saveSetting(key, value) {
+  const uid = getCurrentUserId();
+  const strValue = typeof value === 'string' ? value : JSON.stringify(value);
+  _settingsCache[key] = strValue;
+  if (!uid) { localStorage.setItem(key, strValue); return; }
+  try {
+    await sb.query('user_settings', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: uid, key, value: strValue }),
+      headers: { 'Prefer': 'return=minimal,resolution=merge-duplicates' }
+    });
+  } catch(e) {
+    localStorage.setItem(key, strValue);
+    console.warn(`Setting "${key}" saved to localStorage (Supabase unavailable):`, e.message);
+  }
+}
+
+async function loadSetting(key, defaultValue = null) {
+  if (_settingsCache[key] !== undefined) {
+    return tryParseJSON(_settingsCache[key]);
+  }
+  const uid = getCurrentUserId();
+  if (!uid) {
+    const raw = localStorage.getItem(key);
+    return raw ? tryParseJSON(raw) : defaultValue;
+  }
+  try {
+    const rows = await sb.get('user_settings', `key=eq.${key}&select=value`);
+    if (rows && rows.length > 0) {
+      _settingsCache[key] = rows[0].value;
+      return tryParseJSON(rows[0].value);
+    }
+    const local = localStorage.getItem(key);
+    if (local) { await saveSetting(key, local); localStorage.removeItem(key); return tryParseJSON(local); }
+    return defaultValue;
+  } catch(e) {
+    const raw = localStorage.getItem(key);
+    return raw ? tryParseJSON(raw) : defaultValue;
+  }
+}
+
+async function loadAllSettings() {
+  const uid = getCurrentUserId();
+  if (!uid) return;
+  try {
+    const rows = await sb.get('user_settings', 'select=key,value');
+    (rows || []).forEach(r => { _settingsCache[r.key] = r.value; });
+  } catch(e) {
+    console.warn('Failed to load settings:', e.message);
+  }
+}
+
+function tryParseJSON(str) {
+  try { return JSON.parse(str); } catch(e) { return str; }
+}
+
+function clearSettingsCache() {
+  Object.keys(_settingsCache).forEach(k => delete _settingsCache[k]);
+}
 
 // ============================================================
 // UTILS
@@ -7062,95 +7143,7 @@ async function tryRestoreSession() {
   return false;
 }
 
-// ============================================================
-// USER SETTINGS — stored in Supabase, synced across all devices
-// ============================================================
-
-// In-memory cache so we don't hit Supabase on every read
-const _settingsCache = {};
-
-async function saveSetting(key, value) {
-  const uid = getCurrentUserId();
-  const strValue = typeof value === 'string' ? value : JSON.stringify(value);
-
-  // Always update local cache immediately
-  _settingsCache[key] = strValue;
-
-  if (!uid) {
-    localStorage.setItem(key, strValue);
-    return;
-  }
-
-  // Save to Supabase — completely silent on failure, never throws
-  try {
-    await sb.query('user_settings', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: uid, key, value: strValue }),
-      headers: { 'Prefer': 'return=minimal,resolution=merge-duplicates' }
-    });
-  } catch(e) {
-    // Silently fall back to localStorage — never propagate this error
-    localStorage.setItem(key, strValue);
-    console.warn(`Setting "${key}" saved to localStorage (Supabase unavailable)`);
-  }
-}
-
-async function loadSetting(key, defaultValue = null) {
-  // Return from cache if available
-  if (_settingsCache[key] !== undefined) {
-    try { return JSON.parse(_settingsCache[key]); }
-    catch(e) { return _settingsCache[key]; }
-  }
-
-  const uid = getCurrentUserId();
-  if (!uid) {
-    // Not logged in — use localStorage
-    const raw = localStorage.getItem(key);
-    return raw ? tryParseJSON(raw) : defaultValue;
-  }
-
-  try {
-    const rows = await sb.get('user_settings', `key=eq.${key}&select=value`);
-    if (rows && rows.length > 0) {
-      _settingsCache[key] = rows[0].value;
-      return tryParseJSON(rows[0].value);
-    }
-    // Not in Supabase — check localStorage for migration
-    const local = localStorage.getItem(key);
-    if (local) {
-      // Migrate to Supabase
-      await saveSetting(key, local);
-      localStorage.removeItem(key);
-      return tryParseJSON(local);
-    }
-    return defaultValue;
-  } catch(e) {
-    console.warn(`Failed to load setting "${key}":`, e.message);
-    const raw = localStorage.getItem(key);
-    return raw ? tryParseJSON(raw) : defaultValue;
-  }
-}
-
-// Load all settings at once on init (one round trip)
-async function loadAllSettings() {
-  const uid = getCurrentUserId();
-  if (!uid) return;
-  try {
-    const rows = await sb.get('user_settings', 'select=key,value');
-    (rows || []).forEach(r => { _settingsCache[r.key] = r.value; });
-  } catch(e) {
-    console.warn('Failed to load settings:', e.message);
-  }
-}
-
-function tryParseJSON(str) {
-  try { return JSON.parse(str); }
-  catch(e) { return str; }
-}
-
-function clearSettingsCache() {
-  Object.keys(_settingsCache).forEach(k => delete _settingsCache[k]);
-}
+// USER SETTINGS — defined near top of script (search above)
 
 // ============================================================
 // BOOT
