@@ -7384,31 +7384,41 @@ async function tryRestoreSession() {
 <!-- ADD THIS RIGHT BEFORE THE FINAL BOOT BLOCK -->
 <script>
 
+<!-- IMPROVED MOBILE NAV FIX - REPLACE YOUR PREVIOUS ONE -->
+<script>
 // ================================================
-// MOBILE NAV TOUCH FIX
+// MOBILE NAV RELIABLE TOUCH FIX
 // ================================================
-function enhanceMobileNavClicks() {
-  const navItems = document.querySelectorAll('#sidebar .nav-item');
-  navItems.forEach(item => {
-    // Skip if already enhanced
-    if (item.hasAttribute('data-mobile-enhanced')) return;
-    
-    const originalOnClick = item.getAttribute('onclick');
-    if (!originalOnClick) return;
+function makeNavItemsWorkOnMobile() {
+  const sidebar = document.getElementById('sidebar');
+  
+  // Use event delegation - much more reliable
+  sidebar.addEventListener('click', handleNavClick, true);
+  sidebar.addEventListener('touchend', handleNavClick, { passive: false });
 
-    item.setAttribute('data-mobile-enhanced', 'true');
+  function handleNavClick(e) {
+    const navItem = e.target.closest('.nav-item');
+    if (!navItem) return;
 
-    // Add touchend handler (prevents default and runs the original onclick)
-    item.addEventListener('touchend', function (e) {
+    // Prevent default touch behavior that sometimes blocks onclick
+    if (e.type === 'touchend') {
       e.preventDefault();
-      // Execute the original onclick string safely
-      new Function(originalOnClick).call(this);
-    }, { passive: false });
-  });
+    }
+
+    // Trigger the original onclick safely
+    const onclickStr = navItem.getAttribute('onclick');
+    if (onclickStr) {
+      try {
+        new Function(onclickStr).call(navItem);
+      } catch(err) {
+        console.error("Nav click failed:", err);
+      }
+    }
+  }
 }
 
-// Call it after everything is loaded
-document.addEventListener('DOMContentLoaded', enhanceMobileNavClicks);
+// Run immediately and also after sidebar opens
+document.addEventListener('DOMContentLoaded', makeNavItemsWorkOnMobile);
 </script>
 // ============================================================
 // BOOT
