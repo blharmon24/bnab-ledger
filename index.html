@@ -2373,6 +2373,8 @@ async function init() {
   // Load all user settings from Supabase in one round trip
   // Wrapped in try/catch so a missing table never breaks the app
   try { await loadAllSettings(); } catch(e) { console.warn('Settings load skipped:', e.message); }
+  // Load auto-categorize rules fresh from DB
+  try { await loadRulesFromDB(); } catch(e) { console.warn('Rules load skipped:', e.message); }
   _budgetsCache = null;
 
   try {
@@ -4458,39 +4460,68 @@ window.openModal = function(id) {
 // ============================================================
 // RULES ENGINE
 // ============================================================
+// RULES ENGINE — backed by dedicated Supabase table
+// ============================================================
 
-// Rules stored in localStorage (no DB table needed)
-const RULES_KEY = 'finance_payee_rules';
-
-function loadRules() {
-  const cached = _settingsCache[RULES_KEY];
-  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
-  try { return JSON.parse(localStorage.getItem(RULES_KEY) || '[]'); }
-  catch(e) { return []; }
-}
-
-async function saveRules(rules) {
-  await saveSetting(RULES_KEY, JSON.stringify(rules));
-}
+// In-memory cache — loaded fresh on every page visit
+let _rulesCache = null;
 
 function matchesRule(payee, rule) {
   if (!payee) return false;
   const p = payee.toLowerCase();
-  const k = rule.keyword.toLowerCase();
-  if (rule.matchType === 'exact')      return p === k;
-  if (rule.matchType === 'startswith') return p.startsWith(k);
+  const k = (rule.keyword || '').toLowerCase();
+  if (rule.match_type === 'exact' || rule.matchType === 'exact')           return p === k;
+  if (rule.match_type === 'startswith' || rule.matchType === 'startswith') return p.startsWith(k);
   return p.includes(k); // default: contains
 }
 
+function getRuleCategoryId(rule) {
+  // Support both DB format (category_id) and legacy format (categoryId)
+  return rule.category_id || rule.categoryId || null;
+}
+
+// Load rules from Supabase — always fresh
+async function loadRulesFromDB() {
+  try {
+    const rows = await sb.get('auto_categorize_rules', 'order=sort_order,created_at');
+    _rulesCache = rows || [];
+    return _rulesCache;
+  } catch(e) {
+    console.warn('Could not load rules from DB:', e.message);
+    // Fall back to legacy localStorage/settings cache
+    const cached = _settingsCache['finance_payee_rules'];
+    if (cached) {
+      try {
+        const legacy = JSON.parse(cached);
+        // Convert legacy format to new format for matching
+        _rulesCache = legacy.map((r, i) => ({
+          id: `legacy-${i}`,
+          keyword: r.keyword,
+          category_id: r.categoryId,
+          match_type: r.matchType || 'contains',
+          sort_order: i
+        }));
+        return _rulesCache;
+      } catch(e2) {}
+    }
+    _rulesCache = _rulesCache || [];
+    return _rulesCache;
+  }
+}
+
+// Sync accessor — returns cache (must call loadRulesFromDB first)
+function loadRules() {
+  return _rulesCache || [];
+}
+
 function applyRulesToTransaction(t, rules) {
-  if (t.category_id) return null; // already categorized, don't override
+  if (t.category_id) return null;
   for (const rule of rules) {
-    if (matchesRule(t.payee, rule)) return rule.categoryId;
+    if (matchesRule(t.payee, rule)) return getRuleCategoryId(rule);
   }
   return null;
 }
 
-// Apply rules to a list of transactions before insert (during import)
 function applyRulesToRows(rows) {
   const rules = loadRules();
   if (!rules.length) return rows;
@@ -4502,8 +4533,9 @@ function applyRulesToRows(rows) {
 }
 
 // ── Rules Page ──────────────────────────────────────────────
-function loadRulesPage() {
-  const rules = loadRules();
+async function loadRulesPage() {
+  // Always reload fresh from DB
+  const rules = await loadRulesFromDB();
   const catMap = Object.fromEntries(state.categories.map(c => [c.id, c]));
   const tbody = document.getElementById('rules-table');
   const countEl = document.getElementById('rules-count');
@@ -4523,9 +4555,8 @@ function loadRulesPage() {
     return;
   }
 
-  // Count hits per rule across all transactions
-  tbody.innerHTML = rules.map((rule, idx) => {
-    const cat = catMap[rule.categoryId];
+  tbody.innerHTML = rules.map((rule) => {
+    const cat = catMap[getRuleCategoryId(rule)];
     const hits = state.allTransactions.filter(t => matchesRule(t.payee, rule)).length;
     return `
       <tr>
@@ -4533,75 +4564,90 @@ function loadRulesPage() {
         <td>
           ${cat ? `<span class="color-dot" style="background:${cat.color}"></span>${cat.name}` : '<span style="color:var(--red)">Category deleted</span>'}
         </td>
-        <td style="font-size:11px;color:var(--muted)">${rule.matchType || 'contains'}</td>
+        <td style="font-size:11px;color:var(--muted)">${rule.match_type || 'contains'}</td>
         <td style="font-size:12px;color:var(--muted)">${hits} txn${hits !== 1 ? 's' : ''}</td>
         <td style="display:flex;gap:6px">
-          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="editRule(${idx})">edit</button>
-          <button class="btn btn-danger" style="padding:4px 8px;font-size:11px" onclick="deleteRule(${idx})">del</button>
+          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px"
+            data-ruleid="${rule.id}" onclick="editRule(this.dataset.ruleid)">edit</button>
+          <button class="btn btn-danger" style="padding:4px 8px;font-size:11px"
+            data-ruleid="${rule.id}" onclick="deleteRule(this.dataset.ruleid)">del</button>
         </td>
       </tr>`;
   }).join('');
 }
 
-function editRule(idx) {
-  const rules = loadRules();
-  const rule = rules[idx];
+function editRule(ruleId) {
+  const rule = (_rulesCache || []).find(r => r.id === ruleId);
   if (!rule) return;
   document.getElementById('rule-modal-title').textContent = 'Edit Rule';
-  document.getElementById('rule-editing-id').value = idx;
+  document.getElementById('rule-editing-id').value = ruleId;
   document.getElementById('rule-keyword').value = rule.keyword;
-  document.getElementById('rule-category').value = rule.categoryId;
-  document.getElementById('rule-match-type').value = rule.matchType || 'contains';
+  document.getElementById('rule-category').value = getRuleCategoryId(rule) || '';
+  document.getElementById('rule-match-type').value = rule.match_type || 'contains';
   openModal('modal-rule');
 }
 
-async function deleteRule(idx) {
+async function deleteRule(ruleId) {
   if (!confirm('Delete this rule?')) return;
-  const rules = loadRules();
-  rules.splice(idx, 1);
-  await saveRules(rules);
-  loadRulesPage();
-  toast('Rule deleted');
+  try {
+    await sb.delete('auto_categorize_rules', `id=eq.${ruleId}`);
+    _rulesCache = (_rulesCache || []).filter(r => r.id !== ruleId);
+    loadRulesPage();
+    toast('Rule deleted');
+  } catch(e) {
+    toast('Delete failed: ' + e.message, 'error');
+  }
 }
 
 async function saveRule() {
-  const keyword   = document.getElementById('rule-keyword').value.trim();
+  const keyword    = document.getElementById('rule-keyword').value.trim();
   const categoryId = document.getElementById('rule-category').value;
-  const matchType = document.getElementById('rule-match-type').value;
-  const editingIdx = document.getElementById('rule-editing-id').value;
+  const matchType  = document.getElementById('rule-match-type').value;
+  const editingId  = document.getElementById('rule-editing-id').value;
 
   if (!keyword)    { toast('Enter a keyword', 'error'); return; }
   if (!categoryId) { toast('Select a category', 'error'); return; }
 
-  const rules = loadRules();
-  const rule = { keyword, categoryId, matchType };
+  try {
+    if (editingId) {
+      // Update existing row
+      await sb.patch('auto_categorize_rules', `id=eq.${editingId}`, {
+        keyword, category_id: categoryId, match_type: matchType
+      });
+      toast('Rule updated');
+    } else {
+      // Insert new row
+      const uid = getCurrentUserId();
+      const maxOrder = Math.max(0, ...(_rulesCache || []).map(r => r.sort_order || 0));
+      await sb.post('auto_categorize_rules', {
+        user_id: uid, keyword, category_id: categoryId,
+        match_type: matchType, sort_order: maxOrder + 1
+      });
+      toast('Rule saved');
+    }
 
-  if (editingIdx !== '') {
-    rules[parseInt(editingIdx)] = rule;
-    toast('Rule updated');
-  } else {
-    rules.push(rule);
-    toast('Rule saved');
+    closeModal('modal-rule');
+    document.getElementById('rule-editing-id').value = '';
+    document.getElementById('rule-modal-title').textContent = 'New Payee Rule';
+    document.getElementById('rule-keyword').value = '';
+
+    // Reload fresh from DB
+    await loadRulesFromDB();
+    loadRulesPage();
+  } catch(e) {
+    toast('Save failed: ' + e.message, 'error');
   }
-
-  await saveRules(rules);
-  closeModal('modal-rule');
-  document.getElementById('rule-editing-id').value = '';
-  document.getElementById('rule-modal-title').textContent = 'New Payee Rule';
-  document.getElementById('rule-keyword').value = '';
-  loadRulesPage();
 }
 
 // Apply rules to ALL existing uncategorized transactions
 async function applyRulesToExisting() {
-  const rules = loadRules();
+  const rules = await loadRulesFromDB();
   if (!rules.length) { toast('No rules defined yet', 'error'); return; }
 
   const uncategorized = state.allTransactions.filter(t => !t.category_id);
   if (!uncategorized.length) { toast('All transactions already have categories!'); return; }
 
   let updated = 0, skipped = 0;
-
   for (const t of uncategorized) {
     const catId = applyRulesToTransaction(t, rules);
     if (!catId) { skipped++; continue; }
@@ -4610,9 +4656,7 @@ async function applyRulesToExisting() {
       const idx = state.allTransactions.findIndex(x => x.id === t.id);
       if (idx >= 0) state.allTransactions[idx].category_id = catId;
       updated++;
-    } catch(e) {
-      skipped++;
-    }
+    } catch(e) { skipped++; }
   }
 
   toast(`Categorized ${updated} transactions, ${skipped} didn't match any rule`);
