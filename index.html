@@ -7386,38 +7386,39 @@ async function tryRestoreSession() {
 
 <!-- IMPROVED MOBILE NAV FIX - REPLACE YOUR PREVIOUS ONE -->
 <script>
-<!-- CLEAN & SAFE MOBILE NAV FIX - REPLACE YOUR PREVIOUS ONE -->
-<script>
-// ================================================
-// CLEAN MOBILE NAV FIX (uses data-page attribute - no conflicts)
-// ================================================
-function setupMobileNavClicks() {
-  const sidebar = document.getElementById('sidebar');
-  
-  function handleTap(e) {
-    const navItem = e.target.closest('.nav-item');
-    if (!navItem) return;
 
-    // Prevent default touch behavior that sometimes blocks clicks
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// CLEAN MOBILE NAV FIX (safe version)
+// ============================================================
+function setupMobileNav() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+
+  function handleNavTap(e) {
+    const item = e.target.closest('.nav-item');
+    if (!item) return;
+
     if (e.type === 'touchend') {
       e.preventDefault();
     }
 
-    const page = navItem.getAttribute('data-page');
+    const page = item.getAttribute('data-page');
     if (page) {
-      showPage(page);        // this is the exact function your nav items already call
-      closeMobileMenu();     // closes the sidebar
+      showPage(page);
+      closeMobileMenu();
     }
   }
 
-  // One listener handles both desktop clicks and mobile taps
-  sidebar.addEventListener('click', handleTap);
-  sidebar.addEventListener('touchend', handleTap, { passive: false });
+  sidebar.addEventListener('click', handleNavTap);
+  sidebar.addEventListener('touchend', handleNavTap, { passive: false });
 }
 
-// Run it once when the page loads
-document.addEventListener('DOMContentLoaded', setupMobileNavClicks);
-</script>
+// Run after page loads
+document.addEventListener('DOMContentLoaded', setupMobileNav);
+
 // ============================================================
 // BOOT
 // ============================================================
