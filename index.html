@@ -7381,17 +7381,11 @@ async function tryRestoreSession() {
 }
 
 // USER SETTINGS — defined near top of script (search above)
-<!-- ADD THIS RIGHT BEFORE THE FINAL BOOT BLOCK -->
-<script>
-
-<!-- IMPROVED MOBILE NAV FIX - REPLACE YOUR PREVIOUS ONE -->
-<script>
-
 <div id="toast"></div>
 
 <script>
 // ============================================================
-// CLEAN MOBILE NAV FIX (safe version)
+// CLEAN MOBILE NAV FIX
 // ============================================================
 function setupMobileNav() {
   const sidebar = document.getElementById('sidebar');
@@ -7416,7 +7410,7 @@ function setupMobileNav() {
   sidebar.addEventListener('touchend', handleNavTap, { passive: false });
 }
 
-// Run after page loads
+// Run after DOM is ready
 document.addEventListener('DOMContentLoaded', setupMobileNav);
 
 // ============================================================
