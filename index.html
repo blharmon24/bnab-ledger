@@ -7379,19 +7379,18 @@ async function tryRestoreSession() {
 
 <script>
 // ============================================================
-// RELIABLE MOBILE NAV (stronger touch handling)
+// STRONGER MOBILE NAV FIX (handles stubborn touch cases)
 // ============================================================
 function setupMobileNav() {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
 
   function handleNavTap(e) {
-    // Find the nav item that was tapped
     const item = e.target.closest('.nav-item');
     if (!item) return;
 
-    // Prevent default touch behavior that can block clicks
-    if (e.type === 'touchend') {
+    // Force prevent default on touch to stop interference
+    if (e.type === 'touchend' || e.type === 'touchstart') {
       e.preventDefault();
       e.stopImmediatePropagation();
     }
@@ -7399,26 +7398,30 @@ function setupMobileNav() {
     const page = item.getAttribute('data-page');
     if (page) {
       showPage(page);
-      // Small delay helps on iOS/Android to let the tap register
-      setTimeout(() => {
-        closeMobileMenu();
-      }, 10);
+      // Tiny delay helps iOS/Android register the tap before closing
+      setTimeout(closeMobileMenu, 20);
     }
   }
 
-  // Add both listeners with proper options
+  // Multiple event types for maximum compatibility
   sidebar.addEventListener('click', handleNavTap, { passive: false });
   sidebar.addEventListener('touchend', handleNavTap, { passive: false });
+  sidebar.addEventListener('touchstart', handleNavTap, { passive: false });
 }
 
-// Also enhance the hamburger button itself
+// Also reinforce the hamburger button
 function enhanceHamburger() {
   const btn = document.getElementById('mobile-menu-btn');
   if (btn) {
-    btn.addEventListener('touchend', function(e) {
-      e.preventDefault();
+    const toggle = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
       toggleMobileMenu();
-    }, { passive: false });
+    };
+    btn.addEventListener('click', toggle);
+    btn.addEventListener('touchend', toggle, { passive: false });
   }
 }
 
@@ -7427,19 +7430,3 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceHamburger();
 });
 </script>
-
-// ============================================================
-// BOOT
-// ============================================================
-(async () => {
-  showLoginScreen();
-
-  const restored = await tryRestoreSession();
-  if (restored) {
-    hideLoginScreen();
-    await init();
-  }
-})();
-</script>
-</body>
-</html>
