@@ -7377,31 +7377,56 @@ async function tryRestoreSession() {
   return false;
 }
 
+<script>
 // ============================================================
-// CLEAN MOBILE NAV FIX
+// RELIABLE MOBILE NAV (stronger touch handling)
 // ============================================================
 function setupMobileNav() {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
 
   function handleNavTap(e) {
+    // Find the nav item that was tapped
     const item = e.target.closest('.nav-item');
     if (!item) return;
 
-    if (e.type === 'touchend') e.preventDefault();
+    // Prevent default touch behavior that can block clicks
+    if (e.type === 'touchend') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
 
     const page = item.getAttribute('data-page');
     if (page) {
       showPage(page);
-      closeMobileMenu();
+      // Small delay helps on iOS/Android to let the tap register
+      setTimeout(() => {
+        closeMobileMenu();
+      }, 10);
     }
   }
 
-  sidebar.addEventListener('click', handleNavTap);
+  // Add both listeners with proper options
+  sidebar.addEventListener('click', handleNavTap, { passive: false });
   sidebar.addEventListener('touchend', handleNavTap, { passive: false });
 }
 
-document.addEventListener('DOMContentLoaded', setupMobileNav);
+// Also enhance the hamburger button itself
+function enhanceHamburger() {
+  const btn = document.getElementById('mobile-menu-btn');
+  if (btn) {
+    btn.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      toggleMobileMenu();
+    }, { passive: false });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  setupMobileNav();
+  enhanceHamburger();
+});
+</script>
 
 // ============================================================
 // BOOT
