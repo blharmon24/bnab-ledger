@@ -6,24 +6,39 @@
 <title>BNAB Ledger</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.js"></script>
 <style>
   :root {
-    --bg: #0a0a0f;
-    --surface: #111118;
-    --surface2: #1a1a24;
-    --border: #2a2a3a;
-    --accent: #7c6af7;
-    --accent2: #f7a26a;
-    --accent3: #6af7c8;
-    --text: #e8e8f0;
-    --muted: #6b6b85;
-    --green: #4ade80;
+    --bg: #080b12;
+    --surface: #0f1320;
+    --surface2: #161c2e;
+    --surface3: #1e2640;
+    --border: #232b42;
+    --border2: #2d3855;
+    --accent: #6d6af7;
+    --accent-hover: #5855e8;
+    --accent-glow: rgba(109,106,247,0.25);
+    --accent2: #f59e4a;
+    --accent3: #34d9a5;
+    --text: #eef0f8;
+    --text2: #b0b8d4;
+    --muted: #5a6380;
+    --green: #34d399;
+    --green-bg: rgba(52,211,153,0.1);
     --red: #f87171;
+    --red-bg: rgba(248,113,113,0.1);
     --yellow: #fbbf24;
-    --font-display: 'Syne', sans-serif;
+    --yellow-bg: rgba(251,191,36,0.1);
+    --font-display: 'Plus Jakarta Sans', sans-serif;
+    --font-body: 'Inter', sans-serif;
     --font-mono: 'DM Mono', monospace;
-    --radius: 12px;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --radius-lg: 20px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 48px rgba(0,0,0,0.6);
+    --glow: 0 0 40px rgba(109,106,247,0.15);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,20 +46,21 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
+    font-size: 14px;
     min-height: 100vh;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* GRID BG */
+  /* SUBTLE MESH BACKGROUND */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
     background-image:
-      linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
+      radial-gradient(ellipse 80% 50% at 20% 20%, rgba(109,106,247,0.07) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(52,217,165,0.05) 0%, transparent 60%);
     pointer-events: none;
     z-index: 0;
   }
@@ -53,69 +69,102 @@
 
   /* SIDEBAR */
   #sidebar {
-    width: 220px;
-    min-width: 220px;
+    width: 230px;
+    min-width: 230px;
     background: var(--surface);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    padding: 24px 0;
-    gap: 4px;
+    padding: 20px 0;
+    gap: 2px;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.3);
   }
 
   .sidebar-logo {
-    padding: 0 20px 24px;
+    padding: 4px 16px 20px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
 
   .sidebar-logo h1 {
     font-family: var(--font-display);
     font-weight: 800;
-    font-size: 18px;
+    font-size: 17px;
     letter-spacing: -0.5px;
     color: var(--text);
+    background: linear-gradient(135deg, var(--text) 0%, var(--accent3) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
   .sidebar-logo span {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--accent);
-    letter-spacing: 2px;
+    font-family: var(--font-body);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
     text-transform: uppercase;
+    font-weight: 500;
   }
 
   .nav-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 20px;
+    padding: 9px 14px;
+    margin: 1px 8px;
     cursor: pointer;
     color: var(--muted);
     font-size: 13px;
-    transition: all 0.15s;
-    border-left: 2px solid transparent;
-    letter-spacing: 0.3px;
-    -webkit-tap-highlight-color: rgba(124,106,247,0.2);
+    font-weight: 500;
+    transition: all 0.15s ease;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    letter-spacing: 0;
+    -webkit-tap-highlight-color: rgba(109,106,247,0.2);
     user-select: none;
     -webkit-user-select: none;
   }
 
-  .nav-item:hover { color: var(--text); background: rgba(124,106,247,0.06); }
+  .nav-item:hover {
+    color: var(--text);
+    background: var(--surface2);
+    border-color: var(--border);
+  }
+
   .nav-item.active {
-    color: var(--accent);
-    border-left-color: var(--accent);
-    background: rgba(124,106,247,0.1);
+    color: white;
+    background: linear-gradient(135deg, var(--accent) 0%, #5544e8 100%);
+    border-color: transparent;
+    box-shadow: 0 4px 16px var(--accent-glow);
+  }
+
+  .nav-item.active .nav-icon-wrap svg { stroke: white; }
+
+  .nav-icon-wrap {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .nav-item.active .nav-icon-wrap {
+    background: rgba(255,255,255,0.15);
   }
 
   .nav-icon { font-size: 16px; width: 20px; text-align: center; }
 
   .nav-section {
-    padding: 16px 20px 6px;
+    padding: 14px 22px 4px;
     font-size: 10px;
     letter-spacing: 2px;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--border2);
+    font-weight: 600;
   }
 
   /* MAIN */
@@ -142,13 +191,19 @@
 
   .page-title {
     font-family: var(--font-display);
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 800;
-    letter-spacing: -1px;
+    letter-spacing: -0.5px;
     color: var(--text);
+    line-height: 1.1;
   }
 
-  .page-subtitle { font-size: 12px; color: var(--muted); margin-top: 4px; letter-spacing: 0.5px; }
+  .page-subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-weight: 400;
+  }
 
   /* STAT CARDS */
   .stat-grid {
@@ -161,25 +216,53 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
+    padding: 20px 22px;
     position: relative;
     overflow: hidden;
-    transition: border-color 0.2s;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
   }
 
-  .stat-card:hover { border-color: var(--accent); }
+  .stat-card:hover {
+    border-color: var(--border2);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+  }
 
   .stat-card::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 2px;
+    height: 3px;
     background: var(--accent-color, var(--accent));
+    border-radius: var(--radius) var(--radius) 0 0;
   }
 
-  .stat-label { font-size: 11px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
-  .stat-value { font-family: var(--font-display); font-size: 26px; font-weight: 700; letter-spacing: -1px; }
-  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse at top left, rgba(255,255,255,0.03) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-weight: 600;
+    font-family: var(--font-body);
+  }
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 6px; font-weight: 400; }
   .stat-positive { color: var(--green); }
   .stat-negative { color: var(--red); }
 
@@ -188,31 +271,39 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 24px;
+    padding: 22px 24px;
+    transition: border-color 0.2s;
+    position: relative;
   }
+
+  .card:hover { border-color: var(--border2); }
 
   .card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 20px;
+    gap: 12px;
   }
 
   .card-title {
     font-family: var(--font-display);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     letter-spacing: -0.3px;
+    color: var(--text);
   }
 
   .card-badge {
     font-size: 10px;
-    padding: 3px 8px;
+    padding: 4px 10px;
     border-radius: 20px;
-    background: rgba(124,106,247,0.15);
+    background: rgba(109,106,247,0.12);
     color: var(--accent);
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
+    font-weight: 600;
+    border: 1px solid rgba(109,106,247,0.2);
   }
 
   /* CHARTS */
@@ -229,21 +320,25 @@
   .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .data-table th {
     text-align: left;
-    padding: 8px 12px;
+    padding: 10px 14px;
     font-size: 10px;
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--muted);
     border-bottom: 1px solid var(--border);
-    font-weight: 400;
+    font-weight: 600;
+    font-family: var(--font-body);
+    background: rgba(255,255,255,0.01);
   }
   .data-table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(42,42,58,0.5);
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
     vertical-align: middle;
+    color: var(--text2);
   }
+  .data-table td strong { color: var(--text); font-weight: 600; }
   .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: rgba(124,106,247,0.04); }
+  .data-table tr:hover td { background: rgba(109,106,247,0.04); color: var(--text); }
 
   .amount-pos { color: var(--green); font-weight: 500; }
   .amount-neg { color: var(--red); font-weight: 500; }
@@ -273,34 +368,49 @@
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
-    border-radius: 8px;
-    font-family: var(--font-mono);
-    font-size: 12px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
     border: none;
-    letter-spacing: 0.3px;
+    letter-spacing: 0;
+    white-space: nowrap;
   }
 
   .btn-primary {
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, #5544e8 100%);
     color: white;
+    box-shadow: 0 2px 12px var(--accent-glow);
   }
-  .btn-primary:hover { background: #6b5ce7; }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, var(--accent-hover) 0%, #4433d7 100%);
+    box-shadow: 0 4px 20px var(--accent-glow);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active { transform: translateY(0); }
 
   .btn-ghost {
     background: transparent;
-    color: var(--muted);
+    color: var(--text2);
     border: 1px solid var(--border);
   }
-  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+  .btn-ghost:hover {
+    color: var(--text);
+    border-color: var(--border2);
+    background: var(--surface2);
+  }
 
   .btn-danger {
-    background: rgba(248,113,113,0.1);
+    background: var(--red-bg);
     color: var(--red);
-    border: 1px solid rgba(248,113,113,0.2);
+    border: 1px solid rgba(248,113,113,0.25);
   }
-  .btn-danger:hover { background: rgba(248,113,113,0.2); }
+  .btn-danger:hover {
+    background: rgba(248,113,113,0.2);
+    border-color: rgba(248,113,113,0.4);
+  }
 
   /* FORMS */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -309,27 +419,33 @@
 
   label {
     font-size: 11px;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
     color: var(--muted);
+    font-weight: 600;
+    font-family: var(--font-body);
   }
 
   input, select, textarea {
     background: var(--surface2);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
     color: var(--text);
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
     font-size: 13px;
     outline: none;
-    transition: border-color 0.15s;
+    transition: all 0.15s ease;
     width: 100%;
   }
 
   input:focus, select:focus, textarea:focus {
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    background: var(--surface3);
   }
+
+  input::placeholder { color: var(--muted); }
 
   select option { background: var(--surface2); }
 
@@ -349,8 +465,8 @@
 
   .modal {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-lg);
     padding: 28px;
     width: 560px;
     max-width: 95vw;
@@ -359,6 +475,7 @@
     display: flex;
     flex-direction: column;
     gap: 20px;
+    box-shadow: var(--shadow-lg), 0 0 80px rgba(109,106,247,0.1);
   }
 
   .modal-header {
@@ -371,18 +488,21 @@
     font-family: var(--font-display);
     font-size: 18px;
     font-weight: 700;
+    letter-spacing: -0.3px;
   }
 
   .modal-close {
-    background: none;
-    border: none;
+    background: var(--surface2);
+    border: 1px solid var(--border);
     color: var(--muted);
-    font-size: 20px;
+    font-size: 16px;
     cursor: pointer;
     line-height: 1;
-    padding: 4px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: all 0.15s;
   }
-  .modal-close:hover { color: var(--text); }
+  .modal-close:hover { color: var(--text); background: var(--surface3); }
 
   .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
 
@@ -743,20 +863,80 @@
       <h1>BNAB Ledger</h1>
       <span>Needs a Budget</span>
     </div>
-    <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" onclick="showPage('dashboard');closeMobileMenu()"><span class="nav-icon">⬡</span>Dashboard</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="networth" onclick="showPage('networth');closeMobileMenu()"><span class="nav-icon">↗</span>Net Worth</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="spending" onclick="showPage('spending');closeMobileMenu()"><span class="nav-icon">◎</span>Spending</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="transactions" onclick="showPage('transactions');closeMobileMenu()"><span class="nav-icon">≡</span>Transactions</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="accounts" onclick="showPage('accounts');closeMobileMenu()"><span class="nav-icon">▣</span>Accounts</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="investments" onclick="showPage('investments');closeMobileMenu()"><span class="nav-icon">◈</span>Investments</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="import" onclick="showPage('import');closeMobileMenu()"><span class="nav-icon">↑</span>Bank Imports</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="rules" onclick="showPage('rules');closeMobileMenu()"><span class="nav-icon">⚡</span>Auto-Categorize</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="categories" onclick="showPage('categories');closeMobileMenu()"><span class="nav-icon">◑</span>Categories</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="payees" onclick="showPage('payees');closeMobileMenu()"><span class="nav-icon">⊕</span>Payee Names</div>
+        <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" onclick="showPage('dashboard');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="layout-dashboard" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Dashboard
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="networth" onclick="showPage('networth');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="trending-up" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Net Worth
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="spending" onclick="showPage('spending');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="pie-chart" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Spending
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="transactions" onclick="showPage('transactions');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="list" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Transactions
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="accounts" onclick="showPage('accounts');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="landmark" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Accounts
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="investments" onclick="showPage('investments');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="bar-chart-2" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Investments
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="import" onclick="showPage('import');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="upload-cloud" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Bank Imports
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="rules" onclick="showPage('rules');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="zap" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Auto-Categorize
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="categories" onclick="showPage('categories');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="tag" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Categories
+    </div>
+        <div class="nav-item" role="button" tabindex="0" data-page="payees" onclick="showPage('payees');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="users" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Payee Names
+    </div>
     <div class="nav-section">Tools</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="recurring" onclick="showPage('recurring');closeMobileMenu()"><span class="nav-icon">↻</span>Recurring</div>
+        <div class="nav-item" role="button" tabindex="0" data-page="recurring" onclick="showPage('recurring');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="repeat" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Recurring
+    </div>
     <div class="nav-section">Reports</div>
-    <div class="nav-item" role="button" tabindex="0" data-page="reports" onclick="showPage('reports');closeMobileMenu()"><span class="nav-icon">▦</span>Reports</div>
+        <div class="nav-item" role="button" tabindex="0" data-page="reports" onclick="showPage('reports');closeMobileMenu()">
+      <div class="nav-icon-wrap">
+        <i data-lucide="file-bar-chart" style="width:16px;height:16px;stroke-width:2"></i>
+      </div>
+      Reports
+    </div>
     <div style="flex:1"></div>
     <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
       <div id="sidebar-user-email" style="font-size:10px;color:var(--muted);text-align:center;letter-spacing:0.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
@@ -2282,23 +2462,51 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   });
 });
 
-function showPage(page) {
+const VALID_PAGES = ['dashboard','networth','spending','transactions','accounts',
+  'investments','import','rules','categories','payees','recurring','reports'];
+
+function showPage(page, updateHash = true) {
+  if (!VALID_PAGES.includes(page)) page = 'dashboard';
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById(`page-${page}`).classList.add('active');
-  document.querySelector(`[data-page="${page}"]`).classList.add('active');
 
-  if (page === 'networth') loadNetWorth();
-  if (page === 'spending') loadSpending();
+  const pageEl = document.getElementById(`page-${page}`);
+  const navEl  = document.querySelector(`[data-page="${page}"]`);
+  if (pageEl) pageEl.classList.add('active');
+  if (navEl)  navEl.classList.add('active');
+
+  // Update URL hash so tabs work and back button works
+  if (updateHash && location.hash !== `#${page}`) {
+    history.pushState(null, '', `#${page}`);
+  }
+
+  if (page === 'networth')     loadNetWorth();
+  if (page === 'spending')     loadSpending();
   if (page === 'transactions') { populateCategoryFilter(); populateBulkCategorySelect(); loadTransactions(); }
-  if (page === 'accounts') loadAccounts();
-  if (page === 'investments') loadInvestments();
-  if (page === 'import') loadImportPage();
-  if (page === 'rules') loadRulesPage();
-  if (page === 'categories') loadCategoriesPage();
-  if (page === 'payees') loadPayeesPage();
-  if (page === 'recurring') loadRecurringPage();
-  if (page === 'reports') loadReportsPage();
+  if (page === 'accounts')     loadAccounts();
+  if (page === 'investments')  loadInvestments();
+  if (page === 'import')       loadImportPage();
+  if (page === 'rules')        loadRulesPage();
+  if (page === 'categories')   loadCategoriesPage();
+  if (page === 'payees')       loadPayeesPage();
+  if (page === 'recurring')    loadRecurringPage();
+  if (page === 'reports')      loadReportsPage();
+
+  // Re-create Lucide icons in case new content was rendered
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Handle browser back/forward and direct URL hash navigation
+window.addEventListener('popstate', () => {
+  const page = location.hash.slice(1) || 'dashboard';
+  showPage(page, false);
+});
+
+// Read hash on initial load (handled after auth in init())
+function getInitialPage() {
+  const hash = location.hash.slice(1);
+  return VALID_PAGES.includes(hash) ? hash : 'dashboard';
 }
 
 // Nav items use onclick directly in HTML for maximum cross-browser/mobile compatibility
@@ -2428,8 +2636,20 @@ async function init() {
     }
 
     populateSelects();
-    loadDashboard();
     populateSpendingMonths();
+
+    // Navigate to the page from URL hash, or dashboard
+    const startPage = getInitialPage();
+    if (startPage === 'dashboard') {
+      loadDashboard();
+    } else {
+      loadDashboard(); // load dashboard data in background
+      showPage(startPage);
+    }
+
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
   } catch(e) {
     toast('Connection error: ' + e.message, 'error');
     console.error(e);
