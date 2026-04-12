@@ -7380,7 +7380,6 @@ async function tryRestoreSession() {
   return false;
 }
 
-// USER SETTINGS — defined near top of script (search above)
 <div id="toast"></div>
 
 <script>
@@ -7410,23 +7409,19 @@ function setupMobileNav() {
   sidebar.addEventListener('touchend', handleNavTap, { passive: false });
 }
 
-// Run after DOM is ready
 document.addEventListener('DOMContentLoaded', setupMobileNav);
 
 // ============================================================
 // BOOT
 // ============================================================
 (async () => {
-  // Show login immediately
   showLoginScreen();
 
-  // Try to restore previous session silently
   const restored = await tryRestoreSession();
   if (restored) {
     hideLoginScreen();
     await init();
   }
-  // Otherwise just show the login screen and wait for user input
 })();
 </script>
 </body>
