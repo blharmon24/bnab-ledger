@@ -7336,17 +7336,15 @@ async function tryRestoreSession() {
     if (!raw) return false;
 
     const session = JSON.parse(raw);
-    const bufferMs = 60 * 1000; // refresh 1 min before expiry
+    const bufferMs = 60 * 1000;
 
     if (Date.now() < session.expires_at - bufferMs) {
-      // Token still valid
       authToken    = session.access_token;
       state.userId = session.user_id || null;
       updateSidebarUser(session.email);
       return true;
     }
 
-    // Token expired — try to refresh
     if (session.refresh_token) {
       const data = await sbRefreshToken(session.refresh_token);
       authToken = data.access_token;
@@ -7356,14 +7354,13 @@ async function tryRestoreSession() {
         expires_at:    Date.now() + (data.expires_in * 1000),
         email:         session.email
       }));
-      // Fetch user id from refreshed token
+
       try {
         const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
           headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${data.access_token}` }
         });
         const userData = await userRes.json();
         state.userId = userData.id || session.user_id || null;
-        // Update stored session with user_id
         const stored = JSON.parse(localStorage.getItem('bnab_session') || '{}');
         stored.user_id = state.userId;
         localStorage.setItem('bnab_session', JSON.stringify(stored));
@@ -7379,10 +7376,7 @@ async function tryRestoreSession() {
   }
   return false;
 }
-</script>
-<div id="toast"></div>
 
-<script>
 // ============================================================
 // CLEAN MOBILE NAV FIX
 // ============================================================
@@ -7394,9 +7388,7 @@ function setupMobileNav() {
     const item = e.target.closest('.nav-item');
     if (!item) return;
 
-    if (e.type === 'touchend') {
-      e.preventDefault();
-    }
+    if (e.type === 'touchend') e.preventDefault();
 
     const page = item.getAttribute('data-page');
     if (page) {
