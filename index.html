@@ -7377,9 +7377,8 @@ async function tryRestoreSession() {
   return false;
 }
 
-<script>
 // ============================================================
-// STRONGER MOBILE NAV FIX (handles stubborn touch cases)
+// STRONG MOBILE NAV FIX
 // ============================================================
 function setupMobileNav() {
   const sidebar = document.getElementById('sidebar');
@@ -7389,8 +7388,7 @@ function setupMobileNav() {
     const item = e.target.closest('.nav-item');
     if (!item) return;
 
-    // Force prevent default on touch to stop interference
-    if (e.type === 'touchend' || e.type === 'touchstart') {
+    if (e.type === 'touchend') {
       e.preventDefault();
       e.stopImmediatePropagation();
     }
@@ -7398,35 +7396,28 @@ function setupMobileNav() {
     const page = item.getAttribute('data-page');
     if (page) {
       showPage(page);
-      // Tiny delay helps iOS/Android register the tap before closing
-      setTimeout(closeMobileMenu, 20);
+      setTimeout(closeMobileMenu, 30);
     }
   }
 
-  // Multiple event types for maximum compatibility
   sidebar.addEventListener('click', handleNavTap, { passive: false });
   sidebar.addEventListener('touchend', handleNavTap, { passive: false });
-  sidebar.addEventListener('touchstart', handleNavTap, { passive: false });
 }
 
-// Also reinforce the hamburger button
-function enhanceHamburger() {
-  const btn = document.getElementById('mobile-menu-btn');
-  if (btn) {
-    const toggle = (e) => {
-      if (e) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-      }
-      toggleMobileMenu();
-    };
-    btn.addEventListener('click', toggle);
-    btn.addEventListener('touchend', toggle, { passive: false });
+document.addEventListener('DOMContentLoaded', setupMobileNav);
+
+// ============================================================
+// BOOT
+// ============================================================
+(async () => {
+  showLoginScreen();
+
+  const restored = await tryRestoreSession();
+  if (restored) {
+    hideLoginScreen();
+    await init();
   }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  setupMobileNav();
-  enhanceHamburger();
-});
+})();
 </script>
+</body>
+</html>
