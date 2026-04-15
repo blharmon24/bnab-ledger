@@ -919,7 +919,6 @@
 </script>
 
 <button id="mobile-menu-btn" onclick="toggleMobileMenu()" ontouchend="event.preventDefault();toggleMobileMenu()">☰</button>
-<div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
 <!-- LOGIN SCREEN -->
 <div id="login-screen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);align-items:center;justify-content:center;flex-direction:column">
 
@@ -1026,6 +1025,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
     </div>
   </nav>
+  <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
 
   <!-- MAIN -->
   <main id="main">
