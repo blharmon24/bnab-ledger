@@ -2493,7 +2493,9 @@ const sb = {
       }
       throw new Error(err.message || err.hint || `HTTP ${res.status}`);
     }
-    return res.status === 204 ? null : res.json();
+    if (res.status === 204 || res.headers.get('content-length') === '0') return null;
+    const ct = res.headers.get('content-type') || '';
+    return ct.includes('json') ? res.json() : null;
   },
   get: (table, params='') => sb.query(`${table}?${params}`),
   post: (table, data) => sb.query(table, { method: 'POST', body: JSON.stringify(data) }),
