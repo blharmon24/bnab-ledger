@@ -4488,11 +4488,16 @@ async function simpleFinLoadAccounts(showHidden = false) {
       `value="${escHtml(savedBnabId)}"`,
       `value="${escHtml(savedBnabId)}" selected`
     )}`;
+    const lastUpdatedTs = sfAcct.org?.last_updated;
+    const lastUpdatedStr = lastUpdatedTs
+      ? new Date(lastUpdatedTs * 1000).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })
+      : null;
     return `
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);${isHidden ? 'opacity:0.5' : ''}">
         <div style="min-width:200px">
           <div style="font-weight:600;font-size:13px">${escHtml(sfAcct.name || sfAcct.id)}</div>
           <div style="font-size:11px;color:var(--muted)">${escHtml(sfAcct.org?.name || '')} · ${escHtml(sfAcct.id)}</div>
+          ${lastUpdatedStr ? `<div style="font-size:11px;color:var(--muted)" title="When SimpleFin last fetched data from this institution">SimpleFin updated: ${escHtml(lastUpdatedStr)}</div>` : ''}
         </div>
         <div style="font-size:13px;color:var(--muted)">→</div>
         <select data-sf-id="${escHtml(sfAcct.id)}" style="min-width:200px" ${isHidden ? 'disabled' : ''}>${options}</select>
