@@ -4307,10 +4307,7 @@ async function simpleFinClaim() {
   try {
     const res = await fetch(SIMPLEFIN_FN_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'claim', setup_token: token })
     });
     const rawText = await res.text();
@@ -4352,10 +4349,7 @@ async function simpleFinSync() {
 
     const res = await fetch(SIMPLEFIN_FN_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'fetch', access_url: accessUrl, start_date: startTs })
     });
     const data = await res.json();
