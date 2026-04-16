@@ -24,6 +24,7 @@ features, and adding enhancements — not rebuilding or restructuring.
 
 ## File Structure
 - Single HTML file — all HTML, CSS, and JavaScript lives in one file
+- `supabase/functions/simplefin-proxy/index.ts` — Deno edge function for SimpleFin API proxy
 - No separate JS modules, build tools, or bundlers
 - Do not split into multiple files unless explicitly asked
 
@@ -69,10 +70,40 @@ Key-value store for per-user app settings.
 - Net worth tracking over time
 - Spending reports by category
 - Transaction log with manual entry
-- Transaction import (CSV or similar) with deduplication via `import_id`
+- Transaction import (CSV/QFX) with deduplication via `import_id`
 - Auto-categorization of transactions via keyword rules
 - Investment/portfolio tracking with price data
 - Account balance management
+- **SimpleFin bank sync** — pulls transactions directly from financial institutions
+
+## SimpleFin Integration
+Live bank/credit union transaction sync via SimpleFin Bridge (bridge.simplefin.org).
+
+### Architecture
+- **Edge Function:** `supabase/functions/simplefin-proxy/index.ts` — Deno function deployed with `--no-verify-jwt`. Two actions: `claim` (exchange setup token for access URL) and `fetch` (pull accounts + transactions).
+- **Deployed with:** `npx supabase functions deploy simplefin-proxy --no-verify-jwt`
+- **Called from browser** with no Authorization header (JWT verification disabled).
+
+### User Settings Keys
+- `simplefin_access_url` — permanent access URL (stored after claiming setup token)
+- `simplefin_account_map` — JSON object mapping SimpleFin account ID → BNAB account ID
+- `simplefin_hidden_accounts` — JSON array of SimpleFin account IDs to hide from map UI
+- `simplefin_autosync` — boolean; if true, auto-syncs when Bank Imports page opens
+- `simplefin_last_synced` — ISO timestamp of last successful sync
+
+### Key Functions
+- `simpleFinInit()` — called when Bank Imports page opens; shows cards, restores toggle, auto-syncs if enabled
+- `simpleFinClaim()` — exchanges one-time setup token for access URL via edge function
+- `simpleFinLoadAccounts(showHidden)` — fetches SimpleFin accounts (cached in `_sfAccountsCache`), renders mapping UI
+- `simpleFinToggleHide(sfId, hide)` — hides/unhides a SimpleFin account; uses in-memory `_sfHiddenIds` Set to avoid race conditions
+- `simpleFinSaveMapping()` — saves account mapping to `user_settings`
+- `simpleFinSync()` — fetches transactions per mapped account, deduplicates client-side, batch inserts, saves last-synced timestamp
+
+### Deduplication
+SimpleFin transactions use `import_id = sf_${tx.id}`. Before inserting, existing `import_id`s are fetched per account and filtered client-side. Batch insert via `sb.post`.
+
+### Sync Defaults
+- Since-date defaults to the **first of the current month** (advances automatically each month)
 
 ## Utility Functions (added — use these)
 - **`escHtml(str)`** — HTML-escapes user data before inserting into innerHTML. Use on any user-supplied string (payee, memo, tags, category names) rendered via template literals.
@@ -82,9 +113,15 @@ Key-value store for per-user app settings.
 ## Known Architecture Constraints
 - **`#sidebar-overlay` must stay inside `#app`** — `#app` has `position:relative; z-index:1` which creates its own stacking context. If the overlay is outside `#app`, it sits above the sidebar in the root stacking context regardless of z-index values, breaking mobile nav taps. Do not move it outside `#app`.
 - **CSV import uses fingerprint dedup** — `import_id` for CSV rows is stored as `date|amount|payee` fingerprint (see `rowFingerprint()`). QFX uses FITID. Both are stored in the `import_id` column.
+- **SimpleFin edge function uses `--no-verify-jwt`** — Supabase's ES256 session JWTs are not accepted by the Edge Function runtime. The function is deployed without JWT verification; do not add Authorization headers when calling it.
+- **`saveSetting` upsert requires `on_conflict=user_id,key`** — the `user_settings` table's primary key is `id` (not provided on insert), so upserts must specify the conflict target explicitly: `sb.query('user_settings?on_conflict=user_id,key', ...)`.
+- **`sb.query` handles empty responses** — returns `null` for 204, no-content-type, or zero-length responses. Do not assume `sb.query` always returns JSON.
 
-## Active Enhancement
-- **Transaction Import:** CSV import is fully implemented (`runCSVImport`). Supports single-amount, debit/credit, and YNAB inflow/outflow column formats. Auto-categorizes via rules and optional CSV category column.
+## Transaction Review Mode
+- **"Needs Review" button** on the Transactions page shows a live count badge of uncategorized transactions
+- Clicking it filters to all uncategorized transactions (`needsReview(t)` = `!t.category_id`)
+- Rows with `amount >= REVIEW_LARGE_AMOUNT` ($200) and no category show a yellow ⚠ flag next to the payee
+- `_reviewModeActive` tracks whether review mode is on; cleared when user changes other filters
 
 ## Bugs Fixed (do not re-introduce)
 - **CSS `.nav-item` orphaned selector** — fixed; all layout properties are now under `.nav-item {}`
@@ -97,6 +134,10 @@ Key-value store for per-user app settings.
 - **`saveSplit`** — split transactions now posted with `withUserId()`
 - **`buildBudgetTrendChart`** — now calls `isCCPaymentCategory()` to exclude CC payments, matching all other spending calculations
 - **Mobile hamburger menu** — `#sidebar-overlay` moved inside `#app` to fix stacking context issue (see Architecture Constraints above)
+- **`saveSetting` 409 conflict** — fixed by adding `?on_conflict=user_id,key` to the upsert URL; previously fell back to localStorage on second save of same key
+- **`sb.query` empty body on non-204** — upserts return 201 with no body; fixed by checking content-type before calling `res.json()`
+- **Inline category dropdown clipping** — dropdown now flips upward when near bottom of viewport
+- **SimpleFin hidden accounts race condition** — `_sfHiddenIds` is an in-memory Set updated synchronously; `_sfAccountsCache` avoids re-fetching from SimpleFin on every hide/unhide click
 
 ## Important Rules
 - **Do not restructure the single HTML file** into multiple files unless explicitly asked
