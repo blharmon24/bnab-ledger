@@ -4562,7 +4562,7 @@ async function simpleFinSync() {
       // Pre-fetch existing import_ids for this account
       const existingIds = new Set();
       try {
-        const existing = await sb.get('transactions', `account_id=eq.${bnabAccountId}&import_id=like.sf_%&select=import_id`);
+        const existing = await sb.get('transactions', `account_id=eq.${bnabAccountId}&import_id=not.is.null&select=import_id`);
         (existing || []).forEach(r => existingIds.add(r.import_id));
       } catch(e) {
         console.warn('Could not fetch existing import IDs:', e.message);
@@ -4625,9 +4625,10 @@ async function simpleFinRepairAmounts() {
   statusEl.textContent = 'Scanning…';
 
   try {
-    // Fetch all SimpleFin-imported expense transactions with positive amounts
+    // Fetch all expense transactions with positive amounts — these are from the old buggy SimpleFin sync
+    // (manual, CSV, and QFX imports always store expenses as negative, so any positive expense is SimpleFin)
     const bad = await sb.get('transactions',
-      `user_id=eq.${uid}&type=eq.expense&import_id=like.sf_%&amount=gt.0&select=id,amount`
+      `user_id=eq.${uid}&type=eq.expense&amount=gt.0&select=id,amount`
     );
 
     if (!bad || bad.length === 0) {
