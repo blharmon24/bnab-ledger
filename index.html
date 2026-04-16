@@ -4356,56 +4356,63 @@ async function simpleFinSync() {
     if (!res.ok || data.error) throw new Error(`HTTP ${res.status}: ${data.error || JSON.stringify(data)}`);
 
     const uid = getCurrentUserId();
-    const account = state.accounts.find(a => a.id === accountId);
-    let imported = 0, skipped = 0, errors = 0;
+    const rules = loadRules();
 
     // Gather all transactions from all SimpleFin accounts
     const allTxns = (data.accounts || []).flatMap(sfAcct => sfAcct.transactions || []);
     logEl.innerHTML = `<div>Found ${allTxns.length} transaction(s) from SimpleFin</div>`;
 
+    if (!allTxns.length) {
+      statusEl.style.color = 'var(--accent)';
+      statusEl.textContent = 'Done — no transactions returned for this date range';
+      return;
+    }
+
+    // Pre-fetch existing import_ids to deduplicate client-side
+    statusEl.textContent = 'Checking for duplicates…';
+    const existingIds = new Set();
+    try {
+      const existing = await sb.get('transactions', `account_id=eq.${accountId}&import_id=like.sf_%&select=import_id`);
+      (existing || []).forEach(r => existingIds.add(r.import_id));
+    } catch(e) {
+      console.warn('Could not fetch existing import IDs:', e.message);
+    }
+
+    // Build rows to insert, skipping duplicates
+    const toInsert = [];
+    let skipped = 0;
     for (const tx of allTxns) {
+      const importId = `sf_${tx.id}`;
+      if (existingIds.has(importId)) { skipped++; continue; }
+
+      const amount = parseFloat(tx.amount);
+      const absAmount = Math.abs(amount);
+      const type = amount >= 0 ? 'income' : 'expense';
+      const date = new Date(tx.transacted_at * 1000).toISOString().split('T')[0];
+      const payee = tx.payee || tx.description || 'Unknown';
+      const categoryId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
+
+      toInsert.push({ user_id: uid, account_id: accountId, date, payee, memo: tx.memo || '', amount: absAmount, type, cleared: true, import_id: importId, category_id: categoryId });
+    }
+
+    logEl.innerHTML += `<div>${skipped} duplicate(s) skipped, inserting ${toInsert.length} new transaction(s)…</div>`;
+
+    // Batch insert
+    let imported = 0;
+    if (toInsert.length > 0) {
       try {
-        // SimpleFin amount is a string decimal; positive = credit, negative = debit
-        const amount = parseFloat(tx.amount);
-        const absAmount = Math.abs(amount);
-        const type = amount >= 0 ? 'income' : 'expense';
-        const date = new Date(tx.transacted_at * 1000).toISOString().split('T')[0];
-        const payee = tx.payee || tx.description || 'Unknown';
-        const importId = `sf_${tx.id}`;
-
-        // Auto-categorize
-        const rules = loadRules();
-        let categoryId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
-
-        const row = {
-          user_id: uid,
-          account_id: accountId,
-          date,
-          payee,
-          memo: tx.memo || '',
-          amount: absAmount,
-          type,
-          cleared: true,
-          import_id: importId,
-          category_id: categoryId
-        };
-
-        await sb.query('transactions', {
-          method: 'POST',
-          body: JSON.stringify(row),
-          headers: { 'Prefer': 'return=minimal,resolution=ignore-duplicates' }
+        await sb.post('transactions', toInsert);
+        imported = toInsert.length;
+        toInsert.forEach(r => {
+          logEl.innerHTML += `<div style="color:var(--accent)">✓ ${escHtml(r.date)} — ${escHtml(r.payee)} — $${r.amount.toFixed(2)}</div>`;
         });
-        imported++;
-        logEl.innerHTML += `<div style="color:var(--accent)">✓ ${escHtml(date)} — ${escHtml(payee)} — $${absAmount.toFixed(2)}</div>`;
       } catch(e) {
-        errors++;
-        logEl.innerHTML += `<div style="color:#ef4444">✗ Error on txn ${escHtml(tx.id)}: ${escHtml(e.message)}</div>`;
+        logEl.innerHTML += `<div style="color:#ef4444">Insert error: ${escHtml(e.message)}</div>`;
       }
     }
 
-    skipped = allTxns.length - imported - errors;
     statusEl.style.color = 'var(--accent)';
-    statusEl.textContent = `Done — ${imported} imported, ${skipped} skipped (duplicates), ${errors} errors`;
+    statusEl.textContent = `Done — ${imported} imported, ${skipped} skipped (duplicates)`;
 
     // Refresh transaction list
     await loadTransactions();
