@@ -4313,8 +4313,11 @@ async function simpleFinClaim() {
       },
       body: JSON.stringify({ action: 'claim', setup_token: token })
     });
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || 'Claim failed');
+    const rawText = await res.text();
+    console.log('SimpleFin claim response:', res.status, rawText);
+    let data;
+    try { data = JSON.parse(rawText); } catch(e) { throw new Error(`HTTP ${res.status}: ${rawText}`); }
+    if (!res.ok || data.error) throw new Error(`HTTP ${res.status}: ${data.error || rawText}`);
 
     await saveSetting(SIMPLEFIN_ACCESS_URL_KEY, data.access_url);
     statusEl.style.color = 'var(--accent)';
