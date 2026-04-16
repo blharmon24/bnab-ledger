@@ -2561,10 +2561,10 @@ async function saveSetting(key, value) {
   _settingsCache[key] = strValue;
   if (!uid) { localStorage.setItem(key, strValue); return; }
   try {
-    await sb.query('user_settings', {
+    await sb.query('user_settings?on_conflict=user_id,key', {
       method: 'POST',
       body: JSON.stringify({ user_id: uid, key, value: strValue }),
-      headers: { 'Prefer': 'return=minimal,resolution=merge-duplicates' }
+      headers: { 'Prefer': 'resolution=merge-duplicates' }
     });
   } catch(e) {
     localStorage.setItem(key, strValue);
