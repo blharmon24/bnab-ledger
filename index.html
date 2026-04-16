@@ -1509,6 +1509,56 @@
         </div>
         <div id="import-log" style="margin-top:16px; font-size:12px; color:var(--muted); max-height:200px; overflow-y:auto; line-height:1.8"></div>
       </div>
+
+      <!-- SIMPLEFIN SECTION -->
+      <div style="margin-top:32px">
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:4px">SimpleFin Sync</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Automatically pull transactions directly from your bank or credit union</div>
+      </div>
+
+      <!-- SimpleFin Setup Card -->
+      <div class="card" id="simplefin-setup-card">
+        <div class="card-header">
+          <div class="card-title">Connect SimpleFin</div>
+          <div id="simplefin-status-badge"></div>
+        </div>
+        <div id="simplefin-connected-msg" style="display:none;color:var(--accent);font-size:13px;margin-bottom:12px">
+          ✓ SimpleFin is connected. You can re-enter a setup token below to reconnect.
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+          Sign up at <strong style="color:var(--text)">bridge.simplefin.org</strong>, connect your institutions, then paste your one-time setup token below.
+        </div>
+        <div class="form-group" style="max-width:520px">
+          <label>Setup Token (one-time use)</label>
+          <input type="text" id="simplefin-token-input" placeholder="Paste your SimpleFin setup token here" style="font-family:var(--font-mono);font-size:12px">
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" onclick="simpleFinClaim()">Connect</button>
+          <span id="simplefin-claim-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <!-- SimpleFin Sync Card -->
+      <div class="card" id="simplefin-sync-card" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Sync Transactions</div>
+        </div>
+        <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
+          <div class="form-group" style="min-width:200px;margin-bottom:0">
+            <label>Import into account</label>
+            <select id="simplefin-account-select"></select>
+          </div>
+          <div class="form-group" style="min-width:160px;margin-bottom:0">
+            <label>Fetch transactions since</label>
+            <input type="date" id="simplefin-since-date">
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" onclick="simpleFinSync()">Sync Now</button>
+          <span id="simplefin-sync-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+        <div id="simplefin-sync-log" style="margin-top:16px;font-size:12px;color:var(--muted);max-height:200px;overflow-y:auto;line-height:1.8"></div>
+      </div>
     </div>
 
 
@@ -2621,7 +2671,7 @@ function showPage(page, updateHash = true) {
   if (page === 'transactions') { populateCategoryFilter(); populateBulkCategorySelect(); loadTransactions(); }
   if (page === 'accounts')     loadAccounts();
   if (page === 'investments')  loadInvestments();
-  if (page === 'import')       loadImportPage();
+  if (page === 'import')       { loadImportPage(); simpleFinInit(); }
   if (page === 'rules')        loadRulesPage();
   if (page === 'categories')   loadCategoriesPage();
   if (page === 'payees')       loadPayeesPage();
@@ -4216,6 +4266,157 @@ async function getImportTimestamp(accountId) {
   // Fall back to localStorage
   const raw = localStorage.getItem(key);
   return raw ? new Date(raw) : null;
+}
+
+// ── SimpleFin Integration ─────────────────────────────────────────────────────
+
+const SIMPLEFIN_ACCESS_URL_KEY = 'simplefin_access_url';
+const SIMPLEFIN_FN_URL = `${SUPABASE_URL}/functions/v1/simplefin-proxy`;
+
+async function simpleFinInit() {
+  const accessUrl = await loadSetting(SIMPLEFIN_ACCESS_URL_KEY, null);
+  const syncCard = document.getElementById('simplefin-sync-card');
+  const connectedMsg = document.getElementById('simplefin-connected-msg');
+  if (accessUrl) {
+    if (syncCard) syncCard.style.display = '';
+    if (connectedMsg) connectedMsg.style.display = '';
+  }
+  // Set default since-date to 30 days ago
+  const sinceInput = document.getElementById('simplefin-since-date');
+  if (sinceInput && !sinceInput.value) {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    sinceInput.value = d.toISOString().split('T')[0];
+  }
+  // Populate account select
+  const sel = document.getElementById('simplefin-account-select');
+  if (sel && state.accounts) {
+    sel.innerHTML = state.accounts
+      .filter(a => a.is_active)
+      .map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`)
+      .join('');
+  }
+}
+
+async function simpleFinClaim() {
+  const token = document.getElementById('simplefin-token-input').value.trim();
+  const statusEl = document.getElementById('simplefin-claim-status');
+  if (!token) { statusEl.textContent = 'Please paste your setup token.'; return; }
+
+  statusEl.textContent = 'Connecting…';
+  try {
+    const res = await fetch(SIMPLEFIN_FN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      },
+      body: JSON.stringify({ action: 'claim', setup_token: token })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Claim failed');
+
+    await saveSetting(SIMPLEFIN_ACCESS_URL_KEY, data.access_url);
+    statusEl.style.color = 'var(--accent)';
+    statusEl.textContent = '✓ Connected! Your access URL has been saved.';
+    document.getElementById('simplefin-token-input').value = '';
+    document.getElementById('simplefin-connected-msg').style.display = '';
+    document.getElementById('simplefin-sync-card').style.display = '';
+  } catch(e) {
+    statusEl.style.color = '#ef4444';
+    statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function simpleFinSync() {
+  const accountId = document.getElementById('simplefin-account-select').value;
+  const sinceDate = document.getElementById('simplefin-since-date').value;
+  const statusEl = document.getElementById('simplefin-sync-status');
+  const logEl = document.getElementById('simplefin-sync-log');
+
+  if (!accountId) { statusEl.textContent = 'Select an account first.'; return; }
+
+  const accessUrl = await loadSetting(SIMPLEFIN_ACCESS_URL_KEY, null);
+  if (!accessUrl) { statusEl.textContent = 'Not connected. Enter a setup token first.'; return; }
+
+  statusEl.style.color = 'var(--muted)';
+  statusEl.textContent = 'Fetching…';
+  logEl.innerHTML = '';
+
+  try {
+    // Convert date to Unix timestamp for SimpleFin start-date param
+    const startTs = sinceDate ? Math.floor(new Date(sinceDate).getTime() / 1000) : null;
+
+    const res = await fetch(SIMPLEFIN_FN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      },
+      body: JSON.stringify({ action: 'fetch', access_url: accessUrl, start_date: startTs })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Fetch failed');
+
+    const uid = getCurrentUserId();
+    const account = state.accounts.find(a => a.id === accountId);
+    let imported = 0, skipped = 0, errors = 0;
+
+    // Gather all transactions from all SimpleFin accounts
+    const allTxns = (data.accounts || []).flatMap(sfAcct => sfAcct.transactions || []);
+    logEl.innerHTML = `<div>Found ${allTxns.length} transaction(s) from SimpleFin</div>`;
+
+    for (const tx of allTxns) {
+      try {
+        // SimpleFin amount is a string decimal; positive = credit, negative = debit
+        const amount = parseFloat(tx.amount);
+        const absAmount = Math.abs(amount);
+        const type = amount >= 0 ? 'income' : 'expense';
+        const date = new Date(tx.transacted_at * 1000).toISOString().split('T')[0];
+        const payee = tx.payee || tx.description || 'Unknown';
+        const importId = `sf_${tx.id}`;
+
+        // Auto-categorize
+        const rules = loadRules();
+        let categoryId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
+
+        const row = {
+          user_id: uid,
+          account_id: accountId,
+          date,
+          payee,
+          memo: tx.memo || '',
+          amount: absAmount,
+          type,
+          cleared: true,
+          import_id: importId,
+          category_id: categoryId
+        };
+
+        await sb.query('transactions', {
+          method: 'POST',
+          body: JSON.stringify(row),
+          headers: { 'Prefer': 'return=minimal,resolution=ignore-duplicates' }
+        });
+        imported++;
+        logEl.innerHTML += `<div style="color:var(--accent)">✓ ${escHtml(date)} — ${escHtml(payee)} — $${absAmount.toFixed(2)}</div>`;
+      } catch(e) {
+        errors++;
+        logEl.innerHTML += `<div style="color:#ef4444">✗ Error on txn ${escHtml(tx.id)}: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    skipped = allTxns.length - imported - errors;
+    statusEl.style.color = 'var(--accent)';
+    statusEl.textContent = `Done — ${imported} imported, ${skipped} skipped (duplicates), ${errors} errors`;
+
+    // Refresh transaction list
+    await loadTransactions();
+
+  } catch(e) {
+    statusEl.style.color = '#ef4444';
+    statusEl.textContent = 'Error: ' + e.message;
+  }
 }
 
 async function updateLastImportInfo() {
