@@ -24,8 +24,8 @@ Deno.serve(async (req) => {
         })
       }
 
-      // Decode the setup token to get the claim URL
-      const claimUrl = atob(setup_token) + "/claim"
+      // Decode the setup token to get the claim URL (token is base64 of the URL itself)
+      const claimUrl = atob(setup_token)
 
       const response = await fetch(claimUrl, { method: "POST" })
       if (!response.ok) {
