@@ -1339,9 +1339,9 @@
         <table class="data-table">
           <thead><tr>
             <th style="width:32px"><input type="checkbox" id="select-all-chk" onchange="toggleSelectAll(this)" title="Select all"></th>
-            <th>Date</th><th>Payee</th><th>Category</th><th>Account</th><th>Type</th><th style="text-align:right">Amount</th><th></th>
+            <th>Date</th><th>Payee</th><th>Category</th><th>Account</th><th>Type</th><th style="text-align:right">Amount</th><th id="running-bal-th" style="text-align:right;display:none">Balance</th><th style="width:36px;text-align:center" title="Verified against bank">✓</th><th></th>
           </tr></thead>
-          <tbody id="transactions-table"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
+          <tbody id="transactions-table"><tr><td colspan="10" class="loading">Loading...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -3793,7 +3793,17 @@ function filterTransactions() {
   const allChk = document.getElementById('select-all-chk');
   if (allChk) allChk.checked = txns.length > 0 && txns.every(t => selectedTxnIds.has(t.id));
 
-  renderTransactionRows(txns);
+  // Running balance column: only when filtered to a single account
+  const balHeader = document.getElementById('running-bal-th');
+  if (accFilter) {
+    _currentRunningBalMap = computeRunningBalances(accFilter);
+    if (balHeader) balHeader.style.display = '';
+  } else {
+    _currentRunningBalMap = null;
+    if (balHeader) balHeader.style.display = 'none';
+  }
+
+  renderTransactionRows(txns, _currentRunningBalMap);
   updateReviewBadge();
   updateBulkToolbar();
 }
@@ -3819,6 +3829,34 @@ async function deleteTransaction(id) {
       } catch(e) { toast('Restore failed: ' + e.message, 'error'); }
     });
   } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+function computeRunningBalances(accountId) {
+  // Sort all transactions for this account oldest→newest, then accumulate
+  const acctTxns = state.allTransactions
+    .filter(t => t.account_id === accountId)
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''));
+  const balMap = {};
+  let running = 0;
+  acctTxns.forEach(t => {
+    running += parseFloat(t.amount);
+    balMap[t.id] = running;
+  });
+  return balMap;
+}
+
+async function toggleVerified(id, checkbox) {
+  const t = state.allTransactions.find(t => t.id === id);
+  if (!t) return;
+  const newVal = checkbox.checked;
+  try {
+    await sb.patch('transactions', 'id=eq.' + id, { cleared: newVal });
+    t.cleared = newVal;
+  } catch(e) {
+    checkbox.checked = !newVal; // revert on error
     toast('Error: ' + e.message, 'error');
   }
 }
@@ -5836,6 +5874,7 @@ async function applyRulesToExisting() {
 let selectedTxnIds = new Set();
 let lastCheckedIdx = null;
 let currentFilteredTxns = [];
+let _currentRunningBalMap = null;
 
 function updateBulkToolbar() {
   const toolbar = document.getElementById('bulk-toolbar');
@@ -5855,7 +5894,7 @@ function toggleSelectAll(chk) {
     selectedTxnIds.clear();
   }
   // Re-render to update checkboxes
-  renderTransactionRows(currentFilteredTxns);
+  renderTransactionRows(currentFilteredTxns, _currentRunningBalMap);
   updateBulkToolbar();
 }
 
@@ -5874,7 +5913,7 @@ function toggleTxnSelect(id, idx, event) {
     else selectedTxnIds.add(id);
   }
   lastCheckedIdx = idx;
-  renderTransactionRows(currentFilteredTxns);
+  renderTransactionRows(currentFilteredTxns, _currentRunningBalMap);
   updateBulkToolbar();
 }
 
@@ -5882,7 +5921,7 @@ function clearBulkSelection() {
   selectedTxnIds.clear();
   const chk = document.getElementById('select-all-chk');
   if (chk) chk.checked = false;
-  renderTransactionRows(currentFilteredTxns);
+  renderTransactionRows(currentFilteredTxns, _currentRunningBalMap);
   updateBulkToolbar();
 }
 
@@ -5989,12 +6028,12 @@ function populateCategoryFilter() {
     state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 }
 
-function renderTransactionRows(txns) {
+function renderTransactionRows(txns, runningBalMap = null) {
   const accMap = Object.fromEntries(state.accounts.map(a => [a.id, a.name]));
   const catMap = Object.fromEntries(state.categories.map(c => [c.id, c]));
   const tbody = document.getElementById('transactions-table');
   if (!txns.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="loading">No transactions match.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">No transactions match.</td></tr>';
     return;
   }
   tbody.innerHTML = txns.map((t, idx) => {
@@ -6017,6 +6056,12 @@ function renderTransactionRows(txns) {
 
     const payeeCell = `${escHtml(t.payee) || '—'}${noteIcon}${reviewFlag}${tagPills}`;
 
+    // Running balance cell (only when filtered to single account)
+    const bal = runningBalMap ? runningBalMap[t.id] : null;
+    const balCell = runningBalMap
+      ? `<td style="text-align:right;font-variant-numeric:tabular-nums" class="${bal >= 0 ? 'amount-pos' : 'amount-neg'}">${fmtFull(bal)}</td>`
+      : `<td style="display:none"></td>`;
+
     return `
     <tr class="${selectedTxnIds.has(t.id) ? 'selected-row' : ''}">
       <td><input type="checkbox" ${checked} onchange="toggleTxnSelect('${t.id}', ${idx}, event)"></td>
@@ -6030,6 +6075,8 @@ function renderTransactionRows(txns) {
   </span>
 </td>
       <td style="text-align:right" class="${t.type === 'income' ? 'amount-pos' : 'amount-neg'}">${fmtFull(Math.abs(t.amount))}</td>
+      ${balCell}
+      <td style="text-align:center"><input type="checkbox" ${t.cleared ? 'checked' : ''} onchange="toggleVerified('${t.id}', this)" title="Mark as verified against bank" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer"></td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="editTransaction('${t.id}')">edit</button>
         <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;color:var(--accent2)" onclick="openSplitModal('${t.id}')">split</button>
