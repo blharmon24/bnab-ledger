@@ -4307,8 +4307,7 @@ async function simpleFinInit() {
   const sinceInput = document.getElementById('simplefin-since-date');
   if (sinceInput && !sinceInput.value) {
     const d = new Date();
-    d.setDate(d.getDate() - 30);
-    sinceInput.value = d.toISOString().split('T')[0];
+    sinceInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
   }
 }
 
