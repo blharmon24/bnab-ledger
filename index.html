@@ -4289,6 +4289,7 @@ async function getImportTimestamp(accountId) {
 
 const SIMPLEFIN_ACCESS_URL_KEY = 'simplefin_access_url';
 const SIMPLEFIN_ACCOUNT_MAP_KEY = 'simplefin_account_map';
+const SIMPLEFIN_HIDDEN_ACCOUNTS_KEY = 'simplefin_hidden_accounts';
 const SIMPLEFIN_FN_URL = `${SUPABASE_URL}/functions/v1/simplefin-proxy`;
 
 async function simpleFinInit() {
@@ -4342,7 +4343,7 @@ async function simpleFinClaim() {
   }
 }
 
-async function simpleFinLoadAccounts() {
+async function simpleFinLoadAccounts(showHidden = false) {
   const mapRows = document.getElementById('simplefin-account-map-rows');
   if (!mapRows) return;
   mapRows.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading SimpleFin accounts…</div>';
@@ -4365,38 +4366,73 @@ async function simpleFinLoadAccounts() {
       return;
     }
 
-    // Load saved mapping
     const savedMap = await loadSetting(SIMPLEFIN_ACCOUNT_MAP_KEY, {});
+    const hiddenIds = new Set(await loadSetting(SIMPLEFIN_HIDDEN_ACCOUNTS_KEY, []));
+
     const bnabOptions = (state.accounts || [])
       .filter(a => a.is_active)
       .map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`)
       .join('');
 
-    mapRows.innerHTML = sfAccounts.map(sfAcct => {
+    const visibleAccounts = sfAccounts.filter(a => showHidden || !hiddenIds.has(a.id));
+    const hiddenAccounts  = sfAccounts.filter(a => hiddenIds.has(a.id));
+
+    function renderRow(sfAcct) {
+      const isHidden = hiddenIds.has(sfAcct.id);
       const savedBnabId = savedMap[sfAcct.id] || '';
       const options = `<option value="">— Don't import —</option>${bnabOptions.replace(
         `value="${escHtml(savedBnabId)}"`,
         `value="${escHtml(savedBnabId)}" selected`
       )}`;
       return `
-        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);${isHidden ? 'opacity:0.5' : ''}">
           <div style="min-width:200px">
             <div style="font-weight:600;font-size:13px">${escHtml(sfAcct.name || sfAcct.id)}</div>
             <div style="font-size:11px;color:var(--muted)">${escHtml(sfAcct.org?.name || '')} · ${escHtml(sfAcct.id)}</div>
           </div>
           <div style="font-size:13px;color:var(--muted)">→</div>
-          <select data-sf-id="${escHtml(sfAcct.id)}" style="min-width:200px">${options}</select>
+          <select data-sf-id="${escHtml(sfAcct.id)}" style="min-width:200px" ${isHidden ? 'disabled' : ''}>${options}</select>
+          <button class="btn btn-ghost" style="padding:3px 10px;font-size:11px;white-space:nowrap"
+            onclick="simpleFinToggleHide('${escHtml(sfAcct.id)}', ${!isHidden})">
+            ${isHidden ? '↩ Unhide' : 'Hide'}
+          </button>
         </div>`;
-    }).join('');
+    }
+
+    let html = visibleAccounts.map(renderRow).join('');
+
+    if (hiddenAccounts.length > 0 && !showHidden) {
+      html += `<div style="margin-top:8px">
+        <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px"
+          onclick="simpleFinLoadAccounts(true)">Show ${hiddenAccounts.length} hidden account(s)</button>
+      </div>`;
+    } else if (showHidden && hiddenAccounts.length > 0) {
+      html += hiddenAccounts.map(renderRow).join('');
+      html += `<div style="margin-top:8px">
+        <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px"
+          onclick="simpleFinLoadAccounts(false)">Hide hidden accounts</button>
+      </div>`;
+    }
+
+    mapRows.innerHTML = html;
 
   } catch(e) {
     mapRows.innerHTML = `<div style="color:#ef4444;font-size:13px">Error loading accounts: ${escHtml(e.message)}</div>`;
   }
 }
 
+async function simpleFinToggleHide(sfId, hide) {
+  const hiddenIds = new Set(await loadSetting(SIMPLEFIN_HIDDEN_ACCOUNTS_KEY, []));
+  if (hide) hiddenIds.add(sfId); else hiddenIds.delete(sfId);
+  await saveSetting(SIMPLEFIN_HIDDEN_ACCOUNTS_KEY, JSON.stringify([...hiddenIds]));
+  // Re-render keeping current show/hidden state
+  const showHiddenBtn = document.querySelector('#simplefin-account-map-rows button[onclick^="simpleFinLoadAccounts(false"]');
+  simpleFinLoadAccounts(!!showHiddenBtn);
+}
+
 async function simpleFinSaveMapping() {
   const statusEl = document.getElementById('simplefin-map-status');
-  const selects = document.querySelectorAll('#simplefin-account-map-rows select[data-sf-id]');
+  const selects = document.querySelectorAll('#simplefin-account-map-rows select[data-sf-id]:not([disabled])');
   const mapping = {};
   selects.forEach(sel => {
     if (sel.value) mapping[sel.dataset.sfId] = sel.value;
