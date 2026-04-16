@@ -1297,7 +1297,7 @@
           <div class="page-subtitle" id="txn-count-label">—</div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost" id="uncategorized-btn" onclick="filterUncategorized()" title="Show only uncategorized transactions">⚡ Uncategorized</button>
+          <button class="btn btn-ghost" id="review-btn" onclick="filterNeedsReview()" title="Show transactions that need attention">⚠ Needs Review <span id="review-count-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px"></span></button>
           <button class="btn btn-primary" onclick="resetTransactionModal();openModal('modal-transaction')">+ Transaction</button>
         </div>
       </div>
@@ -1570,10 +1570,15 @@
             <input type="date" id="simplefin-since-date">
           </div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
           <button class="btn btn-primary" onclick="simpleFinSync()">Sync Now</button>
           <span id="simplefin-sync-status" style="font-size:13px;color:var(--muted)"></span>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none">
+          <input type="checkbox" id="simplefin-autosync-toggle" onchange="simpleFinSaveAutoSync(this.checked)">
+          Auto-sync when I open this page
+        </label>
+        <div id="simplefin-last-synced" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
         <div id="simplefin-sync-log" style="margin-top:16px;font-size:12px;color:var(--muted);max-height:200px;overflow-y:auto;line-height:1.8"></div>
       </div>
     </div>
@@ -3711,23 +3716,33 @@ function loadTransactions() {
   filterTransactions();
 }
 
-function filterUncategorized() {
-  // Clear all other filters, set category to Uncategorized, then apply
+let _reviewModeActive = false;
+const REVIEW_LARGE_AMOUNT = 200; // flag uncategorized transactions above this amount
+
+function needsReview(t) {
+  return !t.category_id;
+}
+
+function updateReviewBadge() {
+  const count = (state.allTransactions || []).filter(needsReview).length;
+  const badge = document.getElementById('review-count-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function filterNeedsReview() {
+  _reviewModeActive = true;
   document.getElementById('txn-search').value = '';
   document.getElementById('txn-filter-account').value = '';
   document.getElementById('txn-filter-type').value = '';
   document.getElementById('txn-filter-month').value = '';
   const catFilter = document.getElementById('txn-filter-category');
   if (catFilter) catFilter.value = '__none__';
-
-  // Highlight the button so it's clear the filter is active
-  const btn = document.getElementById('uncategorized-btn');
-  if (btn) {
-    btn.style.background = 'var(--accent)';
-    btn.style.color = 'white';
-    btn.style.borderColor = 'var(--accent)';
-  }
-
   filterTransactions();
 }
 
@@ -3738,13 +3753,16 @@ function filterTransactions() {
   const monthFilter = document.getElementById('txn-filter-month').value;
   const catFilter   = document.getElementById('txn-filter-category')?.value || '';
 
-  // Reset uncategorized button highlight unless __none__ is the active filter
-  const btn = document.getElementById('uncategorized-btn');
+  // Deactivate review mode if user manually changes filters away from it
+  const isReviewState = catFilter === '__none__' && !search && !accFilter && !typeFilter && !monthFilter;
+  if (!isReviewState) _reviewModeActive = false;
+
+  // Update review button highlight
+  const btn = document.getElementById('review-btn');
   if (btn) {
-    const isUncatActive = catFilter === '__none__' && !search && !accFilter && !typeFilter && !monthFilter;
-    btn.style.background = isUncatActive ? 'var(--accent)' : '';
-    btn.style.color = isUncatActive ? 'white' : '';
-    btn.style.borderColor = isUncatActive ? 'var(--accent)' : '';
+    btn.style.background = _reviewModeActive ? 'var(--accent)' : '';
+    btn.style.color = _reviewModeActive ? 'white' : '';
+    btn.style.borderColor = _reviewModeActive ? 'var(--accent)' : '';
   }
 
   let txns = state.allTransactions;
@@ -3771,6 +3789,7 @@ function filterTransactions() {
   if (allChk) allChk.checked = txns.length > 0 && txns.every(t => selectedTxnIds.has(t.id));
 
   renderTransactionRows(txns);
+  updateReviewBadge();
   updateBulkToolbar();
 }
 
@@ -4292,6 +4311,8 @@ async function getImportTimestamp(accountId) {
 const SIMPLEFIN_ACCESS_URL_KEY = 'simplefin_access_url';
 const SIMPLEFIN_ACCOUNT_MAP_KEY = 'simplefin_account_map';
 const SIMPLEFIN_HIDDEN_ACCOUNTS_KEY = 'simplefin_hidden_accounts';
+const SIMPLEFIN_AUTOSYNC_KEY = 'simplefin_autosync';
+const SIMPLEFIN_LAST_SYNCED_KEY = 'simplefin_last_synced';
 let _sfAccountsCache = null;  // cached list of SimpleFin accounts
 let _sfHiddenIds = null;       // in-memory Set of hidden SF account IDs
 const SIMPLEFIN_FN_URL = `${SUPABASE_URL}/functions/v1/simplefin-proxy`;
@@ -4306,12 +4327,39 @@ async function simpleFinInit() {
     if (syncCard) syncCard.style.display = '';
     if (connectedMsg) connectedMsg.style.display = '';
     simpleFinLoadAccounts();
+
+    // Restore auto-sync toggle state
+    const autoSync = await loadSetting(SIMPLEFIN_AUTOSYNC_KEY, false);
+    const toggle = document.getElementById('simplefin-autosync-toggle');
+    if (toggle) toggle.checked = !!autoSync;
+
+    // Show last synced time
+    simpleFinUpdateLastSynced();
+
+    // Auto-sync if enabled
+    if (autoSync) simpleFinSync();
   }
-  // Set default since-date to 30 days ago
+  // Set default since-date to first of current month
   const sinceInput = document.getElementById('simplefin-since-date');
   if (sinceInput && !sinceInput.value) {
     const d = new Date();
     sinceInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+}
+
+async function simpleFinSaveAutoSync(enabled) {
+  await saveSetting(SIMPLEFIN_AUTOSYNC_KEY, enabled);
+}
+
+async function simpleFinUpdateLastSynced() {
+  const el = document.getElementById('simplefin-last-synced');
+  if (!el) return;
+  const ts = await loadSetting(SIMPLEFIN_LAST_SYNCED_KEY, null);
+  if (ts) {
+    const d = new Date(ts);
+    el.textContent = `Last synced: ${d.toLocaleDateString()} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  } else {
+    el.textContent = 'Not yet synced this session';
   }
 }
 
@@ -4550,6 +4598,10 @@ async function simpleFinSync() {
 
     statusEl.style.color = 'var(--accent)';
     statusEl.textContent = `Done — ${totalImported} imported, ${totalSkipped} skipped (duplicates)`;
+
+    // Save last synced timestamp
+    await saveSetting(SIMPLEFIN_LAST_SYNCED_KEY, new Date().toISOString());
+    simpleFinUpdateLastSynced();
 
     await loadTransactions();
 
@@ -5909,7 +5961,12 @@ function renderTransactionRows(txns) {
     // Note indicator
     const noteIcon = memo ? `<span title="${escHtml(memo)}" style="color:var(--muted);cursor:help;margin-left:4px">📝</span>` : '';
 
-    const payeeCell = `${escHtml(t.payee) || '—'}${noteIcon}${tagPills}`;
+    // Review flag: uncategorized + large amount
+    const reviewFlag = (!t.category_id && t.amount >= REVIEW_LARGE_AMOUNT)
+      ? `<span title="Large uncategorized transaction — needs review" style="color:#f59e0b;cursor:help;margin-left:4px">⚠</span>`
+      : '';
+
+    const payeeCell = `${escHtml(t.payee) || '—'}${noteIcon}${reviewFlag}${tagPills}`;
 
     return `
     <tr class="${selectedTxnIds.has(t.id) ? 'selected-row' : ''}">
