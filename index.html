@@ -4309,7 +4309,7 @@ async function simpleFinClaim() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_KEY}`
+        'Authorization': `Bearer ${authToken}`
       },
       body: JSON.stringify({ action: 'claim', setup_token: token })
     });
@@ -4354,12 +4354,12 @@ async function simpleFinSync() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_KEY}`
+        'Authorization': `Bearer ${authToken}`
       },
       body: JSON.stringify({ action: 'fetch', access_url: accessUrl, start_date: startTs })
     });
     const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || 'Fetch failed');
+    if (!res.ok || data.error) throw new Error(`HTTP ${res.status}: ${data.error || JSON.stringify(data)}`);
 
     const uid = getCurrentUserId();
     const account = state.accounts.find(a => a.id === accountId);
