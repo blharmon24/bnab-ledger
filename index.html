@@ -1538,16 +1538,33 @@
         </div>
       </div>
 
+      <!-- SimpleFin Map Accounts Card -->
+      <div class="card" id="simplefin-map-card" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Map Accounts</div>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+          Match each SimpleFin account to the corresponding account in BNAB Ledger. Only mapped accounts will be synced.
+        </div>
+        <div id="simplefin-account-map-rows" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+          <div style="color:var(--muted);font-size:13px">Loading your SimpleFin accounts…</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-ghost" onclick="simpleFinLoadAccounts()">↺ Refresh SimpleFin Accounts</button>
+          <button class="btn btn-primary" onclick="simpleFinSaveMapping()">Save Mapping</button>
+          <span id="simplefin-map-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+      </div>
+
       <!-- SimpleFin Sync Card -->
       <div class="card" id="simplefin-sync-card" style="display:none">
         <div class="card-header">
           <div class="card-title">Sync Transactions</div>
         </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+          Imports transactions for all mapped accounts. Each SimpleFin account goes into its matched BNAB account.
+        </div>
         <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
-          <div class="form-group" style="min-width:200px;margin-bottom:0">
-            <label>Import into account</label>
-            <select id="simplefin-account-select"></select>
-          </div>
           <div class="form-group" style="min-width:160px;margin-bottom:0">
             <label>Fetch transactions since</label>
             <input type="date" id="simplefin-since-date">
@@ -4271,15 +4288,19 @@ async function getImportTimestamp(accountId) {
 // ── SimpleFin Integration ─────────────────────────────────────────────────────
 
 const SIMPLEFIN_ACCESS_URL_KEY = 'simplefin_access_url';
+const SIMPLEFIN_ACCOUNT_MAP_KEY = 'simplefin_account_map';
 const SIMPLEFIN_FN_URL = `${SUPABASE_URL}/functions/v1/simplefin-proxy`;
 
 async function simpleFinInit() {
   const accessUrl = await loadSetting(SIMPLEFIN_ACCESS_URL_KEY, null);
+  const mapCard = document.getElementById('simplefin-map-card');
   const syncCard = document.getElementById('simplefin-sync-card');
   const connectedMsg = document.getElementById('simplefin-connected-msg');
   if (accessUrl) {
+    if (mapCard) mapCard.style.display = '';
     if (syncCard) syncCard.style.display = '';
     if (connectedMsg) connectedMsg.style.display = '';
+    simpleFinLoadAccounts();
   }
   // Set default since-date to 30 days ago
   const sinceInput = document.getElementById('simplefin-since-date');
@@ -4287,14 +4308,6 @@ async function simpleFinInit() {
     const d = new Date();
     d.setDate(d.getDate() - 30);
     sinceInput.value = d.toISOString().split('T')[0];
-  }
-  // Populate account select
-  const sel = document.getElementById('simplefin-account-select');
-  if (sel && state.accounts) {
-    sel.innerHTML = state.accounts
-      .filter(a => a.is_active)
-      .map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`)
-      .join('');
   }
 }
 
@@ -4311,7 +4324,6 @@ async function simpleFinClaim() {
       body: JSON.stringify({ action: 'claim', setup_token: token })
     });
     const rawText = await res.text();
-    console.log('SimpleFin claim response:', res.status, rawText);
     let data;
     try { data = JSON.parse(rawText); } catch(e) { throw new Error(`HTTP ${res.status}: ${rawText}`); }
     if (!res.ok || data.error) throw new Error(`HTTP ${res.status}: ${data.error || rawText}`);
@@ -4321,30 +4333,99 @@ async function simpleFinClaim() {
     statusEl.textContent = '✓ Connected! Your access URL has been saved.';
     document.getElementById('simplefin-token-input').value = '';
     document.getElementById('simplefin-connected-msg').style.display = '';
+    document.getElementById('simplefin-map-card').style.display = '';
     document.getElementById('simplefin-sync-card').style.display = '';
+    simpleFinLoadAccounts();
   } catch(e) {
     statusEl.style.color = '#ef4444';
     statusEl.textContent = 'Error: ' + e.message;
   }
 }
 
+async function simpleFinLoadAccounts() {
+  const mapRows = document.getElementById('simplefin-account-map-rows');
+  if (!mapRows) return;
+  mapRows.innerHTML = '<div style="color:var(--muted);font-size:13px">Loading SimpleFin accounts…</div>';
+
+  const accessUrl = await loadSetting(SIMPLEFIN_ACCESS_URL_KEY, null);
+  if (!accessUrl) return;
+
+  try {
+    const res = await fetch(SIMPLEFIN_FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'fetch', access_url: accessUrl })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Fetch failed');
+
+    const sfAccounts = data.accounts || [];
+    if (!sfAccounts.length) {
+      mapRows.innerHTML = '<div style="color:var(--muted);font-size:13px">No accounts found in SimpleFin.</div>';
+      return;
+    }
+
+    // Load saved mapping
+    const savedMap = await loadSetting(SIMPLEFIN_ACCOUNT_MAP_KEY, {});
+    const bnabOptions = (state.accounts || [])
+      .filter(a => a.is_active)
+      .map(a => `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`)
+      .join('');
+
+    mapRows.innerHTML = sfAccounts.map(sfAcct => {
+      const savedBnabId = savedMap[sfAcct.id] || '';
+      const options = `<option value="">— Don't import —</option>${bnabOptions.replace(
+        `value="${escHtml(savedBnabId)}"`,
+        `value="${escHtml(savedBnabId)}" selected`
+      )}`;
+      return `
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="min-width:200px">
+            <div style="font-weight:600;font-size:13px">${escHtml(sfAcct.name || sfAcct.id)}</div>
+            <div style="font-size:11px;color:var(--muted)">${escHtml(sfAcct.org?.name || '')} · ${escHtml(sfAcct.id)}</div>
+          </div>
+          <div style="font-size:13px;color:var(--muted)">→</div>
+          <select data-sf-id="${escHtml(sfAcct.id)}" style="min-width:200px">${options}</select>
+        </div>`;
+    }).join('');
+
+  } catch(e) {
+    mapRows.innerHTML = `<div style="color:#ef4444;font-size:13px">Error loading accounts: ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function simpleFinSaveMapping() {
+  const statusEl = document.getElementById('simplefin-map-status');
+  const selects = document.querySelectorAll('#simplefin-account-map-rows select[data-sf-id]');
+  const mapping = {};
+  selects.forEach(sel => {
+    if (sel.value) mapping[sel.dataset.sfId] = sel.value;
+  });
+  await saveSetting(SIMPLEFIN_ACCOUNT_MAP_KEY, JSON.stringify(mapping));
+  statusEl.style.color = 'var(--accent)';
+  statusEl.textContent = '✓ Mapping saved';
+  setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
 async function simpleFinSync() {
-  const accountId = document.getElementById('simplefin-account-select').value;
   const sinceDate = document.getElementById('simplefin-since-date').value;
   const statusEl = document.getElementById('simplefin-sync-status');
   const logEl = document.getElementById('simplefin-sync-log');
 
-  if (!accountId) { statusEl.textContent = 'Select an account first.'; return; }
-
   const accessUrl = await loadSetting(SIMPLEFIN_ACCESS_URL_KEY, null);
   if (!accessUrl) { statusEl.textContent = 'Not connected. Enter a setup token first.'; return; }
+
+  const accountMap = await loadSetting(SIMPLEFIN_ACCOUNT_MAP_KEY, {});
+  if (!accountMap || !Object.keys(accountMap).length) {
+    statusEl.textContent = 'No accounts mapped. Use the Map Accounts card above first.';
+    return;
+  }
 
   statusEl.style.color = 'var(--muted)';
   statusEl.textContent = 'Fetching…';
   logEl.innerHTML = '';
 
   try {
-    // Convert date to Unix timestamp for SimpleFin start-date param
     const startTs = sinceDate ? Math.floor(new Date(sinceDate).getTime() / 1000) : null;
 
     const res = await fetch(SIMPLEFIN_FN_URL, {
@@ -4357,64 +4438,68 @@ async function simpleFinSync() {
 
     const uid = getCurrentUserId();
     const rules = loadRules();
+    const sfAccounts = data.accounts || [];
 
-    // Gather all transactions from all SimpleFin accounts
-    const allTxns = (data.accounts || []).flatMap(sfAcct => sfAcct.transactions || []);
-    logEl.innerHTML = `<div>Found ${allTxns.length} transaction(s) from SimpleFin</div>`;
+    let totalImported = 0, totalSkipped = 0;
 
-    if (!allTxns.length) {
-      statusEl.style.color = 'var(--accent)';
-      statusEl.textContent = 'Done — no transactions returned for this date range';
-      return;
-    }
-
-    // Pre-fetch existing import_ids to deduplicate client-side
-    statusEl.textContent = 'Checking for duplicates…';
-    const existingIds = new Set();
-    try {
-      const existing = await sb.get('transactions', `account_id=eq.${accountId}&import_id=like.sf_%&select=import_id`);
-      (existing || []).forEach(r => existingIds.add(r.import_id));
-    } catch(e) {
-      console.warn('Could not fetch existing import IDs:', e.message);
-    }
-
-    // Build rows to insert, skipping duplicates
-    const toInsert = [];
-    let skipped = 0;
-    for (const tx of allTxns) {
-      const importId = `sf_${tx.id}`;
-      if (existingIds.has(importId)) { skipped++; continue; }
-
-      const amount = parseFloat(tx.amount);
-      const absAmount = Math.abs(amount);
-      const type = amount >= 0 ? 'income' : 'expense';
-      const date = new Date(tx.transacted_at * 1000).toISOString().split('T')[0];
-      const payee = tx.payee || tx.description || 'Unknown';
-      const categoryId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
-
-      toInsert.push({ user_id: uid, account_id: accountId, date, payee, memo: tx.memo || '', amount: absAmount, type, cleared: true, import_id: importId, category_id: categoryId });
-    }
-
-    logEl.innerHTML += `<div>${skipped} duplicate(s) skipped, inserting ${toInsert.length} new transaction(s)…</div>`;
-
-    // Batch insert
-    let imported = 0;
-    if (toInsert.length > 0) {
-      try {
-        await sb.post('transactions', toInsert);
-        imported = toInsert.length;
-        toInsert.forEach(r => {
-          logEl.innerHTML += `<div style="color:var(--accent)">✓ ${escHtml(r.date)} — ${escHtml(r.payee)} — $${r.amount.toFixed(2)}</div>`;
-        });
-      } catch(e) {
-        logEl.innerHTML += `<div style="color:#ef4444">Insert error: ${escHtml(e.message)}</div>`;
+    for (const sfAcct of sfAccounts) {
+      const bnabAccountId = accountMap[sfAcct.id];
+      if (!bnabAccountId) {
+        logEl.innerHTML += `<div style="color:var(--muted)">Skipping unmapped account: ${escHtml(sfAcct.name || sfAcct.id)}</div>`;
+        continue;
       }
+
+      const bnabAccount = (state.accounts || []).find(a => a.id === bnabAccountId);
+      const txns = sfAcct.transactions || [];
+      logEl.innerHTML += `<div style="margin-top:8px;font-weight:600">${escHtml(sfAcct.name || sfAcct.id)} → ${escHtml(bnabAccount?.name || bnabAccountId)} (${txns.length} transactions)</div>`;
+
+      if (!txns.length) continue;
+
+      // Pre-fetch existing import_ids for this account
+      const existingIds = new Set();
+      try {
+        const existing = await sb.get('transactions', `account_id=eq.${bnabAccountId}&import_id=like.sf_%&select=import_id`);
+        (existing || []).forEach(r => existingIds.add(r.import_id));
+      } catch(e) {
+        console.warn('Could not fetch existing import IDs:', e.message);
+      }
+
+      // Build rows, skip duplicates
+      const toInsert = [];
+      let skipped = 0;
+      for (const tx of txns) {
+        const importId = `sf_${tx.id}`;
+        if (existingIds.has(importId)) { skipped++; continue; }
+
+        const amount = parseFloat(tx.amount);
+        const absAmount = Math.abs(amount);
+        const type = amount >= 0 ? 'income' : 'expense';
+        const date = new Date(tx.transacted_at * 1000).toISOString().split('T')[0];
+        const payee = tx.payee || tx.description || 'Unknown';
+        const categoryId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
+
+        toInsert.push({ user_id: uid, account_id: bnabAccountId, date, payee, memo: tx.memo || '', amount: absAmount, type, cleared: true, import_id: importId, category_id: categoryId });
+      }
+
+      if (skipped) logEl.innerHTML += `<div style="color:var(--muted)">${skipped} duplicate(s) skipped</div>`;
+
+      if (toInsert.length > 0) {
+        try {
+          await sb.post('transactions', toInsert);
+          totalImported += toInsert.length;
+          logEl.innerHTML += `<div style="color:var(--accent)">✓ Imported ${toInsert.length} transaction(s)</div>`;
+        } catch(e) {
+          logEl.innerHTML += `<div style="color:#ef4444">Insert error: ${escHtml(e.message)}</div>`;
+        }
+      } else {
+        logEl.innerHTML += `<div style="color:var(--muted)">No new transactions</div>`;
+      }
+      totalSkipped += skipped;
     }
 
     statusEl.style.color = 'var(--accent)';
-    statusEl.textContent = `Done — ${imported} imported, ${skipped} skipped (duplicates)`;
+    statusEl.textContent = `Done — ${totalImported} imported, ${totalSkipped} skipped (duplicates)`;
 
-    // Refresh transaction list
     await loadTransactions();
 
   } catch(e) {
