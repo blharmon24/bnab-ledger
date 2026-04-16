@@ -7672,10 +7672,18 @@ function openInlineCatPicker(txnId, event) {
   const dd = document.getElementById(`catpick-${txnId}`);
   if (!dd) return;
 
-  // Position dropdown near the clicked pill
+  // Position dropdown near the clicked pill, flipping upward if near bottom of viewport
   const pill = event.currentTarget;
   const rect = pill.getBoundingClientRect();
-  dd.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+  const dropdownHeight = 320; // max-height from CSS
+  const spaceBelow = window.innerHeight - rect.bottom;
+  if (spaceBelow < dropdownHeight && rect.top > spaceBelow) {
+    // Open upward
+    dd.style.top    = (rect.top + window.scrollY - dropdownHeight - 4) + 'px';
+  } else {
+    // Open downward
+    dd.style.top    = (rect.bottom + window.scrollY + 4) + 'px';
+  }
   dd.style.left = (rect.left + window.scrollX) + 'px';
 
   // Build dropdown content
