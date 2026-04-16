@@ -1580,6 +1580,11 @@
         </label>
         <div id="simplefin-last-synced" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
         <div id="simplefin-sync-log" style="margin-top:16px;font-size:12px;color:var(--muted);max-height:200px;overflow-y:auto;line-height:1.8"></div>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">⚠ One-time repair: if account balances look too high after SimpleFin syncs, prior syncs may have stored expense amounts with incorrect sign. Click below to fix them.</div>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="simpleFinRepairAmounts()">Fix SimpleFin Expense Amounts</button>
+          <span id="simplefin-repair-status" style="font-size:12px;color:var(--muted);margin-left:10px"></span>
+        </div>
       </div>
     </div>
 
@@ -4577,7 +4582,8 @@ async function simpleFinSync() {
         const payee = tx.payee || tx.description || 'Unknown';
         const categoryId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
 
-        toInsert.push({ user_id: uid, account_id: bnabAccountId, date, payee, memo: tx.memo || '', amount: absAmount, type, cleared: true, import_id: importId, category_id: categoryId });
+        const signedAmount = type === 'expense' ? -absAmount : absAmount;
+        toInsert.push({ user_id: uid, account_id: bnabAccountId, date, payee, memo: tx.memo || '', amount: signedAmount, type, cleared: true, import_id: importId, category_id: categoryId });
       }
 
       if (skipped) logEl.innerHTML += `<div style="color:var(--muted)">${skipped} duplicate(s) skipped</div>`;
@@ -4605,6 +4611,48 @@ async function simpleFinSync() {
 
     await loadTransactions();
 
+  } catch(e) {
+    statusEl.style.color = '#ef4444';
+    statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function simpleFinRepairAmounts() {
+  const statusEl = document.getElementById('simplefin-repair-status');
+  const uid = getCurrentUserId();
+  if (!uid) { statusEl.textContent = 'Not logged in'; return; }
+
+  statusEl.textContent = 'Scanning…';
+
+  try {
+    // Fetch all SimpleFin-imported expense transactions with positive amounts
+    const bad = await sb.get('transactions',
+      `user_id=eq.${uid}&type=eq.expense&import_id=like.sf_%&amount=gt.0&select=id,amount`
+    );
+
+    if (!bad || bad.length === 0) {
+      statusEl.textContent = '✓ No repairs needed';
+      return;
+    }
+
+    statusEl.textContent = `Fixing ${bad.length} transaction(s)…`;
+
+    // Update each one to negate the amount
+    let fixed = 0;
+    for (const t of bad) {
+      await sb.patch('transactions', `id=eq.${t.id}`, { amount: -Math.abs(parseFloat(t.amount)) });
+      fixed++;
+    }
+
+    // Reload transactions so in-memory state is fresh
+    state.allTransactions = await fetchAllTransactions();
+    loadDashboard();
+    if (document.getElementById('page-transactions').classList.contains('active')) filterTransactions();
+    if (document.getElementById('page-accounts').classList.contains('active')) loadAccounts();
+
+    statusEl.style.color = 'var(--green)';
+    statusEl.textContent = `✓ Fixed ${fixed} transaction(s)`;
+    toast(`Repaired ${fixed} SimpleFin transaction amounts`);
   } catch(e) {
     statusEl.style.color = '#ef4444';
     statusEl.textContent = 'Error: ' + e.message;
