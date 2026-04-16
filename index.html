@@ -1457,8 +1457,91 @@
       <div class="page-header">
         <div>
           <div class="page-title">Bank Imports</div>
-          <div class="page-subtitle">YNAB exports or bank statements</div>
+          <div class="page-subtitle">Sync from SimpleFin or import via QFX / CSV</div>
         </div>
+      </div>
+
+      <!-- SIMPLEFIN SECTION -->
+      <div style="margin-bottom:4px">
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:4px">SimpleFin Sync</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Automatically pull transactions directly from your bank or credit union</div>
+      </div>
+
+      <!-- SimpleFin Sync Card -->
+      <div class="card" id="simplefin-sync-card" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Sync Transactions</div>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+          Imports transactions for all mapped accounts. Each SimpleFin account goes into its matched BNAB account.
+        </div>
+        <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
+          <div class="form-group" style="min-width:160px;margin-bottom:0">
+            <label>Fetch transactions since</label>
+            <input type="date" id="simplefin-since-date">
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+          <button class="btn btn-primary" onclick="simpleFinSync()">Sync Now</button>
+          <span id="simplefin-sync-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none">
+          <input type="checkbox" id="simplefin-autosync-toggle" onchange="simpleFinSaveAutoSync(this.checked)">
+          Auto-sync when I open this page
+        </label>
+        <div id="simplefin-last-synced" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+        <div id="simplefin-sync-log" style="margin-top:16px;font-size:12px;color:var(--muted);max-height:200px;overflow-y:auto;line-height:1.8"></div>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">⚠ One-time repair: if account balances look too high after SimpleFin syncs, prior syncs may have stored expense amounts with incorrect sign. Click below to fix them.</div>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="simpleFinRepairAmounts()">Fix SimpleFin Expense Amounts</button>
+          <span id="simplefin-repair-status" style="font-size:12px;color:var(--muted);margin-left:10px"></span>
+        </div>
+      </div>
+
+      <!-- SimpleFin Setup Card -->
+      <div class="card" id="simplefin-setup-card">
+        <div class="card-header">
+          <div class="card-title">Connect SimpleFin</div>
+          <div id="simplefin-status-badge"></div>
+        </div>
+        <div id="simplefin-connected-msg" style="display:none;color:var(--accent);font-size:13px;margin-bottom:12px">
+          ✓ SimpleFin is connected. You can re-enter a setup token below to reconnect.
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+          Sign up at <strong style="color:var(--text)">bridge.simplefin.org</strong>, connect your institutions, then paste your one-time setup token below.
+        </div>
+        <div class="form-group" style="max-width:520px">
+          <label>Setup Token (one-time use)</label>
+          <input type="text" id="simplefin-token-input" placeholder="Paste your SimpleFin setup token here" style="font-family:var(--font-mono);font-size:12px">
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn-primary" onclick="simpleFinClaim()">Connect</button>
+          <span id="simplefin-claim-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <!-- SimpleFin Map Accounts Card -->
+      <div class="card" id="simplefin-map-card" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Map Accounts</div>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+          Match each SimpleFin account to the corresponding account in BNAB Ledger. Only mapped accounts will be synced.
+        </div>
+        <div id="simplefin-account-map-rows" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
+          <div style="color:var(--muted);font-size:13px">Loading your SimpleFin accounts…</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn btn-ghost" onclick="_sfAccountsCache=null;simpleFinLoadAccounts()">↺ Refresh SimpleFin Accounts</button>
+          <button class="btn btn-primary" onclick="simpleFinSaveMapping()">Save Mapping</button>
+          <span id="simplefin-map-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <!-- CSV / QFX SECTION -->
+      <div style="margin-top:32px;margin-bottom:4px">
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:4px">Manual Import</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Import transactions from a QFX or CSV file</div>
       </div>
 
       <div class="card">
@@ -1508,83 +1591,6 @@
           <button class="btn btn-primary" id="import-run-btn" onclick="runImport()">Import Transactions</button>
         </div>
         <div id="import-log" style="margin-top:16px; font-size:12px; color:var(--muted); max-height:200px; overflow-y:auto; line-height:1.8"></div>
-      </div>
-
-      <!-- SIMPLEFIN SECTION -->
-      <div style="margin-top:32px">
-        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:4px">SimpleFin Sync</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Automatically pull transactions directly from your bank or credit union</div>
-      </div>
-
-      <!-- SimpleFin Setup Card -->
-      <div class="card" id="simplefin-setup-card">
-        <div class="card-header">
-          <div class="card-title">Connect SimpleFin</div>
-          <div id="simplefin-status-badge"></div>
-        </div>
-        <div id="simplefin-connected-msg" style="display:none;color:var(--accent);font-size:13px;margin-bottom:12px">
-          ✓ SimpleFin is connected. You can re-enter a setup token below to reconnect.
-        </div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
-          Sign up at <strong style="color:var(--text)">bridge.simplefin.org</strong>, connect your institutions, then paste your one-time setup token below.
-        </div>
-        <div class="form-group" style="max-width:520px">
-          <label>Setup Token (one-time use)</label>
-          <input type="text" id="simplefin-token-input" placeholder="Paste your SimpleFin setup token here" style="font-family:var(--font-mono);font-size:12px">
-        </div>
-        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
-          <button class="btn btn-primary" onclick="simpleFinClaim()">Connect</button>
-          <span id="simplefin-claim-status" style="font-size:13px;color:var(--muted)"></span>
-        </div>
-      </div>
-
-      <!-- SimpleFin Map Accounts Card -->
-      <div class="card" id="simplefin-map-card" style="display:none">
-        <div class="card-header">
-          <div class="card-title">Map Accounts</div>
-        </div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
-          Match each SimpleFin account to the corresponding account in BNAB Ledger. Only mapped accounts will be synced.
-        </div>
-        <div id="simplefin-account-map-rows" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px">
-          <div style="color:var(--muted);font-size:13px">Loading your SimpleFin accounts…</div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button class="btn btn-ghost" onclick="_sfAccountsCache=null;simpleFinLoadAccounts()">↺ Refresh SimpleFin Accounts</button>
-          <button class="btn btn-primary" onclick="simpleFinSaveMapping()">Save Mapping</button>
-          <span id="simplefin-map-status" style="font-size:13px;color:var(--muted)"></span>
-        </div>
-      </div>
-
-      <!-- SimpleFin Sync Card -->
-      <div class="card" id="simplefin-sync-card" style="display:none">
-        <div class="card-header">
-          <div class="card-title">Sync Transactions</div>
-        </div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
-          Imports transactions for all mapped accounts. Each SimpleFin account goes into its matched BNAB account.
-        </div>
-        <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
-          <div class="form-group" style="min-width:160px;margin-bottom:0">
-            <label>Fetch transactions since</label>
-            <input type="date" id="simplefin-since-date">
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
-          <button class="btn btn-primary" onclick="simpleFinSync()">Sync Now</button>
-          <span id="simplefin-sync-status" style="font-size:13px;color:var(--muted)"></span>
-        </div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none">
-          <input type="checkbox" id="simplefin-autosync-toggle" onchange="simpleFinSaveAutoSync(this.checked)">
-          Auto-sync when I open this page
-        </label>
-        <div id="simplefin-last-synced" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
-        <div id="simplefin-sync-log" style="margin-top:16px;font-size:12px;color:var(--muted);max-height:200px;overflow-y:auto;line-height:1.8"></div>
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
-          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">⚠ One-time repair: if account balances look too high after SimpleFin syncs, prior syncs may have stored expense amounts with incorrect sign. Click below to fix them.</div>
-          <button class="btn btn-ghost" style="font-size:12px" onclick="simpleFinRepairAmounts()">Fix SimpleFin Expense Amounts</button>
-          <span id="simplefin-repair-status" style="font-size:12px;color:var(--muted);margin-left:10px"></span>
-        </div>
       </div>
     </div>
 
