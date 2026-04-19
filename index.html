@@ -1023,13 +1023,20 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.18.2</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.18.3</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
 
   <!-- MAIN -->
   <main id="main">
+
+    <!-- BALANCE ALERT BANNER -->
+    <div id="balance-alert-banner" style="display:none;background:#7f1d1d;color:#fecaca;padding:14px 20px;font-size:13px;line-height:1.7;position:relative">
+      <strong style="display:block;margin-bottom:4px">Balance Alert</strong>
+      <div id="balance-alert-body"></div>
+      <button onclick="dismissBalanceAlerts()" style="position:absolute;top:10px;right:14px;background:none;border:none;color:#fecaca;font-size:18px;cursor:pointer;line-height:1">✕</button>
+    </div>
 
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
@@ -1545,7 +1552,7 @@
           <div class="card-title">Balance Alerts</div>
         </div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
-          Get an email when an account balance goes too low or too high. Alerts are sent automatically after each nightly sync.
+          Get notified when an account balance goes too low or too high. A banner will appear at the top of the app after each nightly sync if a threshold is breached.
         </div>
         <div id="simplefin-alerts-list"></div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:16px">
@@ -2888,6 +2895,9 @@ async function init() {
 
     // Initialize Lucide icons
     if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Show any pending balance alerts from nightly sync
+    checkPendingAlerts();
 
   } catch(e) {
     toast('Connection error: ' + e.message, 'error');
@@ -4577,6 +4587,22 @@ async function simpleFinSaveMapping() {
   statusEl.style.color = 'var(--accent)';
   statusEl.textContent = '✓ Mapping saved';
   setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
+async function checkPendingAlerts() {
+  const alerts = await loadSetting('pending_alerts', null);
+  if (!alerts || !Array.isArray(alerts) || !alerts.length) return;
+  const banner = document.getElementById('balance-alert-banner');
+  const body = document.getElementById('balance-alert-body');
+  if (!banner || !body) return;
+  body.innerHTML = alerts.map(a => `<div>• ${escHtml(a)}</div>`).join('');
+  banner.style.display = '';
+  await saveSetting('pending_alerts', JSON.stringify([]));
+}
+
+async function dismissBalanceAlerts() {
+  const banner = document.getElementById('balance-alert-banner');
+  if (banner) banner.style.display = 'none';
 }
 
 async function simpleFinRenderAlerts() {
