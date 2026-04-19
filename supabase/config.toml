@@ -15,5 +15,3 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/scheduled-sync/deno.json"
 entrypoint = "./functions/scheduled-sync/index.ts"
-# Runs daily at 7:00 PM Mountain Standard Time (02:00 UTC)
-schedule = "0 2 * * *"
