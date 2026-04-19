@@ -1,0 +1,19 @@
+
+[functions.simplefin-proxy]
+enabled = true
+verify_jwt = true
+import_map = "./functions/simplefin-proxy/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/simplefin-proxy/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/simplefin-proxy/*.html" ]
+
+[functions.scheduled-sync]
+enabled = true
+verify_jwt = false
+import_map = "./functions/scheduled-sync/deno.json"
+entrypoint = "./functions/scheduled-sync/index.ts"
+# Runs daily at 7:00 PM Mountain Standard Time (02:00 UTC)
+schedule = "0 2 * * *"

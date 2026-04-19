@@ -1023,7 +1023,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2025.04.16.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.18.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1539,6 +1539,21 @@
         </div>
       </div>
 
+      <!-- Balance Alerts Card -->
+      <div class="card" id="simplefin-alerts-card" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Balance Alerts</div>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+          Get an email when an account balance goes too low or too high. Alerts are sent automatically after each nightly sync.
+        </div>
+        <div id="simplefin-alerts-list"></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:16px">
+          <button class="btn btn-primary" onclick="simpleFinSaveAlerts()">Save Alerts</button>
+          <span id="simplefin-alerts-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+      </div>
+
       <!-- CSV / QFX SECTION -->
       <div style="margin-top:32px;margin-bottom:4px">
         <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:4px">Manual Import</div>
@@ -1972,7 +1987,8 @@
         <select id="txn-type">
           <option value="expense">Expense</option>
           <option value="income">Income</option>
-          <option value="transfer">Transfer</option>
+          <option value="transfer_out">Transfer Out (from this account)</option>
+          <option value="transfer_in">Transfer In (to this account)</option>
         </select>
       </div>
       <div class="form-group full">
@@ -4363,6 +4379,7 @@ const SIMPLEFIN_ACCOUNT_MAP_KEY = 'simplefin_account_map';
 const SIMPLEFIN_HIDDEN_ACCOUNTS_KEY = 'simplefin_hidden_accounts';
 const SIMPLEFIN_AUTOSYNC_KEY = 'simplefin_autosync';
 const SIMPLEFIN_LAST_SYNCED_KEY = 'simplefin_last_synced';
+const SIMPLEFIN_ALERT_THRESHOLDS_KEY = 'alert_thresholds';
 let _sfAccountsCache = null;  // cached list of SimpleFin accounts
 let _sfHiddenIds = null;       // in-memory Set of hidden SF account IDs
 const SIMPLEFIN_FN_URL = `${SUPABASE_URL}/functions/v1/simplefin-proxy`;
@@ -4531,6 +4548,7 @@ async function simpleFinLoadAccounts(showHidden = false) {
   }
 
   mapRows.innerHTML = html;
+  simpleFinRenderAlerts();
 }
 
 async function simpleFinToggleHide(sfId, hide) {
@@ -4559,6 +4577,72 @@ async function simpleFinSaveMapping() {
   statusEl.style.color = 'var(--accent)';
   statusEl.textContent = '✓ Mapping saved';
   setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
+async function simpleFinRenderAlerts() {
+  const card = document.getElementById('simplefin-alerts-card');
+  if (!card) return;
+
+  const accountMap = await loadSetting(SIMPLEFIN_ACCOUNT_MAP_KEY, {});
+  const mappedEntries = Object.entries(accountMap || {}).filter(([, bnabId]) => bnabId);
+  if (!mappedEntries.length) { card.style.display = 'none'; return; }
+
+  const thresholds = await loadSetting(SIMPLEFIN_ALERT_THRESHOLDS_KEY, {});
+  const sfAccounts = _sfAccountsCache || [];
+  const list = document.getElementById('simplefin-alerts-list');
+  let html = '';
+
+  for (const [sfId, bnabId] of mappedEntries) {
+    const sfAcct = sfAccounts.find(a => a.id === sfId);
+    const bnabAcct = (state.accounts || []).find(a => a.id === bnabId);
+    const t = (thresholds && thresholds[sfId]) || { enabled: false, type: '', amount: '' };
+    const sfName = escHtml(sfAcct?.name || sfId);
+    const bnabName = escHtml(bnabAcct?.name || String(bnabId));
+    const isCredit = bnabAcct?.type === 'credit_card';
+    const alertType = t.type || (isCredit ? 'high' : 'low');
+    const safeId = escHtml(sfId);
+
+    html += `
+      <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px">${sfName} → ${bnabName}</div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+            <input type="checkbox" class="alert-enabled" data-sfid="${safeId}" ${t.enabled ? 'checked' : ''}>
+            Enable alert
+          </label>
+          <select class="alert-type" data-sfid="${safeId}" style="font-size:13px;padding:4px 6px">
+            <option value="low" ${alertType === 'low' ? 'selected' : ''}>Balance drops below</option>
+            <option value="high" ${alertType === 'high' ? 'selected' : ''}>Balance goes above</option>
+          </select>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:13px;color:var(--muted)">$</span>
+            <input type="number" class="alert-amount" data-sfid="${safeId}"
+              value="${escHtml(String(t.amount ?? ''))}"
+              placeholder="0.00" min="0" step="0.01"
+              style="width:100px;font-size:13px">
+          </div>
+        </div>
+      </div>`;
+  }
+
+  list.innerHTML = html;
+  card.style.display = '';
+}
+
+async function simpleFinSaveAlerts() {
+  const statusEl = document.getElementById('simplefin-alerts-status');
+  const thresholds = {};
+  document.querySelectorAll('.alert-enabled').forEach(cb => {
+    const sfId = cb.dataset.sfid;
+    const type = document.querySelector(`.alert-type[data-sfid="${sfId}"]`)?.value || 'low';
+    const raw = document.querySelector(`.alert-amount[data-sfid="${sfId}"]`)?.value || '0';
+    const amount = parseFloat(raw);
+    thresholds[sfId] = { enabled: cb.checked, type, amount: isNaN(amount) ? 0 : amount };
+  });
+  await saveSetting(SIMPLEFIN_ALERT_THRESHOLDS_KEY, JSON.stringify(thresholds));
+  statusEl.style.color = 'var(--accent)';
+  statusEl.textContent = '✓ Saved';
+  setTimeout(() => { statusEl.textContent = ''; }, 2500);
 }
 
 async function simpleFinSync() {
@@ -5397,7 +5481,11 @@ function editTransaction(id) {
   document.getElementById('txn-modal-title').textContent = 'Edit Transaction';
   document.getElementById('txn-editing-id').value = id;
   document.getElementById('txn-date').value = t.date;
-  document.getElementById('txn-type').value = t.type;
+  if (t.type === 'transfer') {
+    document.getElementById('txn-type').value = t.amount < 0 ? 'transfer_out' : 'transfer_in';
+  } else {
+    document.getElementById('txn-type').value = t.type;
+  }
   document.getElementById('txn-payee').value = t.payee || '';
   document.getElementById('txn-amount').value = Math.abs(t.amount);
   document.getElementById('txn-memo').value = memo;
@@ -5435,8 +5523,13 @@ async function saveTransaction() {
 
   if (!date || !rawAmount || !account_id) { toast('Fill in date, amount, and account', 'error'); return; }
 
-  const amount = type === 'expense' ? -Math.abs(rawAmount) : Math.abs(rawAmount);
-  const payload = { date, type, payee, amount, account_id, category_id, memo };
+  let dbType = type;
+  let amount;
+  if (type === 'transfer_out') { dbType = 'transfer'; amount = -Math.abs(rawAmount); }
+  else if (type === 'transfer_in') { dbType = 'transfer'; amount = Math.abs(rawAmount); }
+  else if (type === 'expense') { amount = -Math.abs(rawAmount); }
+  else { amount = Math.abs(rawAmount); }
+  const payload = { date, type: dbType, payee, amount, account_id, category_id, memo };
 
   try {
     if (editingId) {
