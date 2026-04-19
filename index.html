@@ -1023,7 +1023,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.18.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.18.4</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -4764,6 +4764,28 @@ async function simpleFinSync() {
 
     statusEl.style.color = 'var(--accent)';
     statusEl.textContent = `Done — ${totalImported} imported, ${totalSkipped} skipped (duplicates)`;
+
+    // Check balance thresholds and show alert banner if any are breached
+    const thresholds = await loadSetting(SIMPLEFIN_ALERT_THRESHOLDS_KEY, {});
+    if (thresholds && Object.keys(thresholds).length) {
+      const alerts = [];
+      for (const sfAcct of sfAccounts) {
+        const threshold = thresholds[sfAcct.id];
+        if (!threshold?.enabled || sfAcct.balance === undefined) continue;
+        const balance = parseFloat(sfAcct.balance);
+        const displayBalance = Math.abs(balance);
+        const name = sfAcct.name || sfAcct.id;
+        if (threshold.type === 'low' && balance < threshold.amount) {
+          alerts.push(`${name}: balance $${balance.toFixed(2)} is below your alert of $${Number(threshold.amount).toFixed(2)}`);
+        } else if (threshold.type === 'high' && displayBalance > threshold.amount) {
+          alerts.push(`${name}: balance $${displayBalance.toFixed(2)} exceeds your alert of $${Number(threshold.amount).toFixed(2)}`);
+        }
+      }
+      if (alerts.length) {
+        await saveSetting('pending_alerts', JSON.stringify(alerts));
+        checkPendingAlerts();
+      }
+    }
 
     // Save last synced timestamp
     await saveSetting(SIMPLEFIN_LAST_SYNCED_KEY, new Date().toISOString());
