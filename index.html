@@ -1023,7 +1023,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.19.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.19.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -7984,14 +7984,14 @@ function openInlineCatPicker(txnId, event) {
   const rect = pill.getBoundingClientRect();
   const dropdownHeight = 320; // max-height from CSS
   const spaceBelow = window.innerHeight - rect.bottom;
-  if (spaceBelow < dropdownHeight && rect.top > spaceBelow) {
-    // Open upward
-    dd.style.top    = (rect.top + window.scrollY - dropdownHeight - 4) + 'px';
+  if (spaceBelow < dropdownHeight) {
+    // Open upward, clamped so it never goes above the viewport
+    dd.style.top = Math.max(4, rect.top - dropdownHeight - 4) + 'px';
   } else {
     // Open downward
-    dd.style.top    = (rect.bottom + window.scrollY + 4) + 'px';
+    dd.style.top = (rect.bottom + 4) + 'px';
   }
-  dd.style.left = (rect.left + window.scrollX) + 'px';
+  dd.style.left = rect.left + 'px';
 
   // Build dropdown content
   const txn    = state.allTransactions.find(t => t.id === txnId);
