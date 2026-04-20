@@ -1023,7 +1023,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.18.4</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.19.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -4791,7 +4791,8 @@ async function simpleFinSync() {
     await saveSetting(SIMPLEFIN_LAST_SYNCED_KEY, new Date().toISOString());
     simpleFinUpdateLastSynced();
 
-    await loadTransactions();
+    state.allTransactions = await fetchAllTransactions();
+    loadTransactions();
 
   } catch(e) {
     statusEl.style.color = '#ef4444';
