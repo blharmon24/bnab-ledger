@@ -1024,7 +1024,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.19.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.22.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3856,7 +3856,7 @@ async function deleteTransaction(id) {
         const { id: _id, ...rest } = txn;
         const [saved] = await sb.post('transactions', rest);
         state.allTransactions.unshift(saved);
-        state.allTransactions.sort((a, b) => b.date.localeCompare(a.date));
+        state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
         filterTransactions();
         loadDashboard();
         toast('Transaction restored');
@@ -4013,7 +4013,7 @@ async function deleteAccount(id) {
             const [saved] = await sb.post('transactions', { ...rest, account_id: savedAccount.id });
             state.allTransactions.unshift(saved);
           }
-          state.allTransactions.sort((a, b) => b.date.localeCompare(a.date));
+          state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
 
           populateSelects();
           loadAccounts();
@@ -5587,7 +5587,7 @@ async function saveTransaction() {
       const saved = Array.isArray(updated) ? updated[0] : updated;
       const idx = state.allTransactions.findIndex(t => t.id === editingId);
       if (idx >= 0) state.allTransactions[idx] = saved || { ...state.allTransactions[idx], ...payload };
-      state.allTransactions.sort((a, b) => b.date.localeCompare(a.date));
+      state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
       toast('Transaction updated!');
     } else {
       const [saved] = await sb.post('transactions', withUserId(payload));
@@ -6122,7 +6122,7 @@ async function bulkDeleteSelected() {
             const [saved] = await sb.post('transactions', rest);
             state.allTransactions.unshift(saved);
           }
-          state.allTransactions.sort((a, b) => b.date.localeCompare(a.date));
+          state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
           filterTransactions();
           loadDashboard();
           toast(`Restored ${deletedTxns.length} transactions`);
@@ -7416,7 +7416,7 @@ async function fetchAllTransactions() {
   while (true) {
     const batch = await sb.get(
       'transactions',
-      `order=date.desc&limit=${pageSize}&offset=${offset}`
+      `order=date.desc,created_at.desc&limit=${pageSize}&offset=${offset}`
     );
     if (!batch || !batch.length) break;
     all = all.concat(batch);
@@ -7731,7 +7731,7 @@ async function saveSplit() {
     }
 
     // Sort by date desc
-    state.allTransactions.sort((a, b) => b.date.localeCompare(a.date));
+    state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
 
     closeModal('modal-split');
     filterTransactions();
@@ -7821,7 +7821,7 @@ async function saveOpeningBalances() {
   }
 
   // Re-sort
-  state.allTransactions.sort((a, b) => b.date.localeCompare(a.date));
+  state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
   closeModal('modal-opening-balance');
   loadAccounts();
   loadDashboard();
