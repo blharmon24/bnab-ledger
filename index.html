@@ -1024,7 +1024,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.22.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.22.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3868,11 +3868,13 @@ async function deleteTransaction(id) {
 }
 
 function computeRunningBalances(accountId) {
-  // Sort all transactions for this account oldest→newest, then accumulate
+  // state.allTransactions is newest-first; reverse gives oldest-first for accumulation.
+  // Using .reverse() (not a re-sort) guarantees the accumulation order is the
+  // exact inverse of the display order — critical for same-date transactions that
+  // may have identical created_at timestamps from batch imports.
   const acctTxns = state.allTransactions
     .filter(t => t.account_id === accountId)
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''));
+    .reverse();
   const balMap = {};
   let running = 0;
   acctTxns.forEach(t => {
@@ -5592,6 +5594,7 @@ async function saveTransaction() {
     } else {
       const [saved] = await sb.post('transactions', withUserId(payload));
       state.allTransactions.unshift(saved);
+      state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
       toast('Transaction saved!');
     }
     closeModal('modal-transaction');
