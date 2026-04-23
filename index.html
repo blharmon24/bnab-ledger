@@ -3991,8 +3991,10 @@ async function deleteAccount(id) {
   if (!confirm(`Delete account "${account.name}"? This will also remove ${affectedTxns.length} transaction${affectedTxns.length !== 1 ? 's' : ''}. You can undo immediately after.`)) return;
   try {
     await sb.delete('accounts', `id=eq.${id}`);
+    await sb.delete('net_worth_snapshots', `account_id=eq.${id}`).catch(() => {});
     state.accounts         = state.accounts.filter(a => a.id !== id);
     state.allTransactions  = state.allTransactions.filter(t => t.account_id !== id);
+    state.snapshots        = (state.snapshots || []).filter(s => s.account_id !== id);
     populateSelects();
     loadAccounts();
     loadDashboard();
@@ -4002,13 +4004,13 @@ async function deleteAccount(id) {
       async () => {
         try {
           // Restore account
-          const [savedAccount] = await sb.post('accounts', {
+          const [savedAccount] = await sb.post('accounts', withUserId({
             name:        account.name,
             type:        account.type,
             institution: account.institution,
             currency:    account.currency,
             is_active:   account.is_active
-          });
+          }));
           state.accounts.push(savedAccount);
 
           // Restore transactions with new account id
@@ -4745,7 +4747,8 @@ async function simpleFinSync() {
         const type = amount >= 0 ? 'income' : 'expense';
         const date = new Date(tx.transacted_at * 1000).toISOString().split('T')[0];
         const payee = tx.payee || tx.description || 'Unknown';
-        const categoryId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
+        const rawCatId = applyRulesToTransaction({ payee, category_id: null }, rules) || null;
+        const categoryId = rawCatId && state.categories.find(c => c.id === rawCatId) ? rawCatId : null;
 
         const signedAmount = type === 'expense' ? -absAmount : absAmount;
         toInsert.push({ user_id: uid, account_id: bnabAccountId, date, payee, memo: tx.memo || '', amount: signedAmount, type, cleared: true, import_id: importId, category_id: categoryId });
@@ -5460,7 +5463,8 @@ async function runCSVImport() {
       }
     }
     if (!category_id) {
-      category_id = rules.find(r => matchesRule(rawPayee, r))?.category_id || null;
+      const matchedCatId = rules.find(r => matchesRule(rawPayee, r))?.category_id || null;
+      category_id = matchedCatId && state.categories.find(c => c.id === matchedCatId) ? matchedCatId : null;
     }
 
     // Deduplication fingerprint
