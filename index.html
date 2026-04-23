@@ -1628,7 +1628,7 @@
         </div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-ghost" onclick="applyRulesToExisting()">⚡ Apply to existing</button>
-          <button class="btn btn-primary" onclick="openModal('modal-rule')">+ New Rule</button>
+          <button class="btn btn-primary" onclick="openNewRuleModal()">+ New Rule</button>
         </div>
       </div>
 
@@ -1699,7 +1699,7 @@
         </div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-ghost" onclick="applyPayeeRulesToExisting()">⊕ Apply to existing</button>
-          <button class="btn btn-primary" onclick="openModal('modal-payee-rule')">+ New Rule</button>
+          <button class="btn btn-primary" onclick="openNewPayeeRuleModal()">+ New Rule</button>
         </div>
       </div>
 
@@ -5626,6 +5626,7 @@ async function saveAccount() {
     toast('Account created!');
     document.getElementById('acc-name').value = '';
     document.getElementById('acc-institution').value = '';
+    document.getElementById('acc-type').value = 'checking';
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -5944,6 +5945,15 @@ async function loadRulesPage() {
   }).join('');
 }
 
+function openNewRuleModal() {
+  document.getElementById('rule-modal-title').textContent = 'New Payee Rule';
+  document.getElementById('rule-editing-id').value = '';
+  document.getElementById('rule-keyword').value = '';
+  document.getElementById('rule-category').value = '';
+  document.getElementById('rule-match-type').value = 'contains';
+  openModal('modal-rule');
+}
+
 function editRule(ruleId) {
   const rule = (_rulesCache || []).find(r => r.id === ruleId);
   if (!rule) return;
@@ -5998,6 +6008,8 @@ async function saveRule() {
     document.getElementById('rule-editing-id').value = '';
     document.getElementById('rule-modal-title').textContent = 'New Payee Rule';
     document.getElementById('rule-keyword').value = '';
+    document.getElementById('rule-category').value = '';
+    document.getElementById('rule-match-type').value = 'contains';
 
     // Reload fresh from DB
     await loadRulesFromDB();
@@ -6692,6 +6704,14 @@ async function deletePayeeRule(idx) {
   await savePayeeRules(rules);
   loadPayeesPage();
   toast('Rule deleted');
+}
+
+function openNewPayeeRuleModal() {
+  document.getElementById('payee-rule-modal-title').textContent = 'New Payee Rule';
+  document.getElementById('payee-rule-editing-id').value = '';
+  document.getElementById('payee-rule-keyword').value = '';
+  document.getElementById('payee-rule-clean').value = '';
+  openModal('modal-payee-rule');
 }
 
 // Open modal pre-filled from a specific raw payee
