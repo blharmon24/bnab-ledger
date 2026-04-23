@@ -1,7 +1,10 @@
 import "@supabase/functions-js/edge-runtime.d.ts"
+import nodemailer from "nodemailer"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const GMAIL_USER = Deno.env.get("GMAIL_USER")
+const GMAIL_APP_PASS = Deno.env.get("GMAIL_APP_PASS")
 
 const DB_HEADERS = {
   apikey: SERVICE_ROLE_KEY,
@@ -36,6 +39,32 @@ async function dbUpsert(table: string, data: object): Promise<void> {
     body: JSON.stringify(data),
   })
   if (!res.ok) throw new Error(`DB upsert ${table} failed: ${await res.text()}`)
+}
+
+async function getUserEmail(userId: string): Promise<string | null> {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.email || null
+}
+
+async function sendAlertEmail(toEmail: string, alerts: string[]): Promise<void> {
+  if (!GMAIL_USER || !GMAIL_APP_PASS) return
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASS },
+  })
+  const body = alerts.map((a) => `• ${a}`).join("\n")
+  await transporter.sendMail({
+    from: `BNAB Ledger <${GMAIL_USER}>`,
+    to: toEmail,
+    subject: "Balance Alert — BNAB Ledger",
+    text: `The following balance thresholds were breached during your sync:\n\n${body}\n\n— BNAB Ledger`,
+  })
 }
 
 function applyRules(payee: string, rules: any[]): string | null {
@@ -138,14 +167,29 @@ async function syncUser(
   return { imported: totalImported, alerts }
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
   try {
+    const url = new URL(req.url)
+    const isTest = url.searchParams.get("test") === "true"
+
     const urlSettings = await dbGet("user_settings", "key=eq.simplefin_access_url&select=user_id,value")
 
     const results: object[] = []
 
     for (const { user_id: userId, value: accessUrl } of urlSettings) {
       try {
+        // Test mode: skip sync, just send a test email
+        if (isTest) {
+          const email = await getUserEmail(userId)
+          if (email) {
+            await sendAlertEmail(email, ["Test alert — BNAB Ledger email notifications are working!"])
+            results.push({ userId, status: "test-email-sent", to: email })
+          } else {
+            results.push({ userId, status: "test-skipped", reason: "no email found" })
+          }
+          continue
+        }
+
         const [mapSettings, thresholdSettings, rules] = await Promise.all([
           dbGet("user_settings", `user_id=eq.${userId}&key=eq.simplefin_account_map&select=value`),
           dbGet("user_settings", `user_id=eq.${userId}&key=eq.alert_thresholds&select=value`),
@@ -172,13 +216,14 @@ Deno.serve(async (_req) => {
           value: new Date().toISOString(),
         })
 
-        // Store alerts in user_settings so the app shows a banner on next login
         if (alerts.length > 0) {
           await dbUpsert("user_settings", {
             user_id: userId,
             key: "pending_alerts",
             value: JSON.stringify(alerts),
           })
+          const email = await getUserEmail(userId)
+          if (email) await sendAlertEmail(email, alerts)
         }
 
         results.push({ userId, status: "ok", imported, alerts: alerts.length })
