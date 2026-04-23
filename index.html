@@ -3135,6 +3135,7 @@ function loadDashboard() {
 }).reduce((s,t) => s + parseFloat(t.amount), 0);
   const spending = monthTxns.filter(t => {
     if (t.type !== 'expense') return false;
+    if (isDebtPayment(t)) return false;
     const cat = catMap2[t.category_id];
     if (cat && isCCPaymentCategory(cat.name)) return false;
     return true;
@@ -3178,7 +3179,7 @@ function calcNetWorthFromTxns() {
   let assets = 0, debts = 0;
   Object.values(balances).forEach(b => {
     if (typeAssets().includes(b.type)) assets += b.balance;
-    else debts += Math.abs(Math.min(0, b.balance));
+    else if (typeDebts().includes(b.type)) debts += Math.abs(Math.min(0, b.balance));
   });
   return assets - debts;
 }
@@ -7609,6 +7610,10 @@ async function processRecurring() {
       console.error('Recurring create failed:', e);
     }
   }
+
+  state.allTransactions.sort((a, b) =>
+    b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || '')
+  );
 
   btn.textContent = '↻ Generate This Month';
   btn.disabled = false;
