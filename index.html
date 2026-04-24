@@ -467,6 +467,9 @@
   .badge-mortgage { background: rgba(251,146,60,0.15); color: #fb923c; }
   .badge-loan { background: rgba(248,113,113,0.15); color: #f87171; }
   .badge-other { background: rgba(107,114,128,0.15); color: #9ca3af; }
+  .badge-real_estate { background: rgba(20,184,166,0.15); color: #2dd4bf; }
+  .badge-crypto { background: rgba(251,146,60,0.15); color: #fb923c; }
+  .badge-precious_metals { background: rgba(250,204,21,0.15); color: #facc15; }
 
   /* BUTTONS */
   .btn {
@@ -1128,7 +1131,7 @@
       <div class="page-header">
         <div>
           <div class="page-title">Net Worth</div>
-          <div class="page-subtitle">calculated from your transactions — no manual snapshots needed</div>
+          <div class="page-subtitle">transactions + manual asset values</div>
         </div>
       </div>
 
@@ -1207,6 +1210,22 @@
           <thead><tr><th>Account</th><th>Type</th><th>Institution</th><th style="text-align:right">Balance</th></tr></thead>
           <tbody id="nw-accounts-table"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
         </table>
+      </div>
+
+      <!-- Other Assets: retirement, real estate, crypto, precious metals -->
+      <div class="card" id="other-assets-card" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Other Assets</div>
+          <div class="card-badge">retirement · real estate · crypto · metals</div>
+        </div>
+        <div id="other-assets-list"></div>
+        <div id="sats-chart-section" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">Bitcoin Price History</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:12px">USD per SAT = BTC price ÷ 100,000,000 · 12-month view via CoinGecko</div>
+          <div class="chart-wrap" style="height:200px">
+            <canvas id="chart-sats"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2055,6 +2074,9 @@
           <option value="mortgage">Mortgage</option>
           <option value="loan">Loan</option>
           <option value="other">Other</option>
+          <option value="real_estate">Real Estate</option>
+          <option value="crypto">Crypto</option>
+          <option value="precious_metals">Precious Metals</option>
         </select>
       </div>
       <div class="form-group">
@@ -2087,6 +2109,32 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-snapshot')">Cancel</button>
       <button class="btn btn-primary" onclick="saveSnapshot()">Save Snapshot</button>
+    </div>
+  </div>
+</div>
+
+<!-- Update Asset Value Modal -->
+<div class="modal-overlay" id="modal-asset-value">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title" id="asset-value-modal-title">Update Asset Value</div>
+      <button class="modal-close" onclick="closeModal('modal-asset-value')">✕</button>
+    </div>
+    <p id="asset-value-modal-desc" style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px"></p>
+    <input type="hidden" id="asset-value-account-id">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="asset-value-date">
+      </div>
+      <div class="form-group">
+        <label>Current Value ($)</label>
+        <input type="number" id="asset-value-amount" step="0.01" min="0" placeholder="0.00">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-asset-value')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAssetValue()">Save Value</button>
     </div>
   </div>
 </div>
@@ -2756,7 +2804,7 @@ function getInitialPage() {
 
 // Nav items use onclick directly in HTML for maximum cross-browser/mobile compatibility
 
-function typeAssets() { return ['checking','savings','investment','retirement']; }
+function typeAssets() { return ['checking','savings','investment','retirement','real_estate','crypto','precious_metals']; }
 function typeDebts() { return ['credit_card','mortgage','loan']; }
 
 // ============================================================
@@ -2932,7 +2980,7 @@ function populateSelects() {
   if (txnAcc) txnAcc.innerHTML = accOptions;
   if (filterAcc) filterAcc.innerHTML = '<option value="">All accounts</option>' + accOptions;
   if (importAcc) importAcc.innerHTML = accOptions;
-  if (holdAcc) holdAcc.innerHTML = accs.filter(a => ['investment','retirement'].includes(a.type)).map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('') || accOptions;
+  if (holdAcc) holdAcc.innerHTML = accs.filter(a => ['investment','retirement','crypto','precious_metals'].includes(a.type)).map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('') || accOptions;
 
   // Category select grouped
   const groups = {};
@@ -3370,6 +3418,19 @@ function calcNetWorthAsOf(asOfDate) {
     }
   });
 
+  // For manual asset accounts with no transactions, use most recent snapshot on or before asOfDate
+  const manualTypes = new Set(['retirement', 'real_estate', 'crypto', 'precious_metals']);
+  if (state.snapshots && state.snapshots.length) {
+    state.accounts.filter(a => manualTypes.has(a.type)).forEach(a => {
+      const hasTransactions = state.allTransactions.some(t => t.account_id === a.id);
+      if (hasTransactions) return;
+      const snap = state.snapshots
+        .filter(s => s.account_id === a.id && s.snapshot_date <= asOfDate)
+        .sort((x, y) => y.snapshot_date.localeCompare(x.snapshot_date))[0];
+      if (snap) balMap[a.id].balance = parseFloat(snap.balance);
+    });
+  }
+
   let assets = 0, liabilities = 0;
   Object.values(balMap).forEach(a => {
     if (typeAssets().includes(a.type))      assets      += Math.max(0, a.balance);
@@ -3455,6 +3516,8 @@ async function loadNetWorth() {
   } else if (projGrid) {
     projGrid.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px">Need at least 6 months of transaction history for projections.</div>';
   }
+
+  loadManualAssets();
 }
 
 function renderNWAccountsTable(balMap, label) {
@@ -3527,13 +3590,18 @@ function buildNetWorthChart() {
   // Calculate net worth at each point
   const values = points.map(p => calcNetWorthAsOf(p.date).netWorth);
 
-  // Only include points from the first date we have any transaction data
-  const firstTxnDate = state.allTransactions.length
-    ? state.allTransactions.reduce((min, t) => t.date < min ? t.date : min, state.allTransactions[0].date)
-    : today();
+  // Include points from the first date we have any transaction or manual asset snapshot
+  const manualSnapDates = (state.snapshots || [])
+    .filter(s => { const a = state.accounts.find(x => x.id === s.account_id); return a && ['retirement','real_estate','crypto','precious_metals'].includes(a.type); })
+    .map(s => s.snapshot_date);
+  const allDates = [
+    ...(state.allTransactions.length ? [state.allTransactions.reduce((min, t) => t.date < min ? t.date : min, state.allTransactions[0].date)] : []),
+    ...manualSnapDates
+  ];
+  const firstDataDate = allDates.length ? allDates.reduce((min, d) => d < min ? d : min, allDates[0]) : today();
 
   const filtered = points.map((p, i) => ({ ...p, value: values[i] }))
-                         .filter(p => p.date >= firstTxnDate.slice(0, 7) + '-01');
+                         .filter(p => p.date >= firstDataDate.slice(0, 7) + '-01');
 
   if (charts.networth) charts.networth.destroy();
   const ctx = document.getElementById('chart-networth').getContext('2d');
@@ -3544,7 +3612,7 @@ function buildNetWorthChart() {
     ctx.fillStyle = theme0.mutedColor;
     ctx.font = '13px DM Mono';
     ctx.textAlign = 'center';
-    ctx.fillText('Add transactions to see your net worth over time', ctx.canvas.width/2, ctx.canvas.height/2);
+    ctx.fillText('Add transactions or asset values to see net worth over time', ctx.canvas.width/2, ctx.canvas.height/2);
     return;
   }
 
@@ -5652,6 +5720,221 @@ async function saveSnapshot() {
     loadNetWorth();
     toast('Snapshot saved!');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Other Assets (retirement, real estate, crypto, precious metals) ──
+
+const MANUAL_ASSET_TYPES = ['retirement', 'real_estate', 'crypto', 'precious_metals'];
+
+function loadManualAssets() {
+  const manualAccounts = state.accounts.filter(a => MANUAL_ASSET_TYPES.includes(a.type));
+  const card = document.getElementById('other-assets-card');
+  if (!manualAccounts.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  // Most recent snapshot per account
+  const snapByAccount = {};
+  (state.snapshots || []).forEach(s => {
+    if (!snapByAccount[s.account_id] || s.snapshot_date > snapByAccount[s.account_id].snapshot_date) {
+      snapByAccount[s.account_id] = s;
+    }
+  });
+
+  let hasBtcHolding = false;
+
+  const rows = manualAccounts.map(a => {
+    const snap = snapByAccount[a.id];
+    const val  = snap ? parseFloat(snap.balance) : null;
+    const lastUpdated = snap ? snap.snapshot_date : null;
+    const isCrypto = a.type === 'crypto';
+    const isGold   = a.type === 'precious_metals';
+
+    const holdings = (state.holdings || []).filter(h => h.account_id === a.id);
+    let holdHtml = '';
+
+    if (holdings.length && (isCrypto || isGold)) {
+      holdHtml = holdings.map(h => {
+        const shares = parseFloat(h.shares || 0);
+        const price  = parseFloat(h.current_price || 0);
+        const holdVal = shares * price;
+        const isBtc   = isCrypto && (h.ticker === 'BTC-USD' || h.ticker === 'BTC');
+        if (isBtc) hasBtcHolding = true;
+
+        let quantityLine, priceLine;
+        if (isBtc) {
+          const sats = Math.round(shares * 100000000);
+          quantityLine = `${shares.toFixed(8)} BTC <span style="color:var(--accent3);font-size:11px">= ${sats.toLocaleString()} SATS</span>`;
+          priceLine = price
+            ? `${fmtFull(price)}/BTC &nbsp;·&nbsp; <span style="font-size:11px">$${(price / 100000000).toFixed(8)}/SAT</span>`
+            : 'No price yet — refresh';
+        } else {
+          quantityLine = `${shares.toFixed(4)} oz ${h.name || 'gold'}`;
+          priceLine = price ? `${fmtFull(price)}/oz` : 'No price yet — refresh';
+        }
+
+        return `<div style="background:var(--surface2);border-radius:8px;padding:12px;margin-top:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-size:13px;color:var(--text)">${quantityLine}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${priceLine}</div>
+            </div>
+            <div style="text-align:right">
+              ${price ? `<div style="font-size:16px;font-weight:600;color:var(--green)">${fmtFull(holdVal)}</div>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px" onclick="refreshAssetHolding('${h.id}','${a.id}')">⟳ Refresh Price</button>
+            ${price ? `<button class="btn btn-primary" style="font-size:11px;padding:3px 10px" onclick="syncHoldingToSnapshot('${a.id}',${holdVal})">Sync to Net Worth</button>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    const hasHolding = holdings.length && (isCrypto || isGold);
+    const showUpdateBtn = !hasHolding;
+
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:12px">
+      <div style="flex:1;min-width:180px">
+        <div style="font-weight:500">${escHtml(a.name)}</div>
+        ${a.institution ? `<div style="font-size:12px;color:var(--muted)">${escHtml(a.institution)}</div>` : ''}
+        <span class="type-badge badge-${a.type}" style="margin-top:4px;display:inline-block">${a.type.replace(/_/g,' ')}</span>
+        ${holdHtml}
+      </div>
+      <div style="text-align:right;min-width:120px">
+        <div style="font-size:18px;font-weight:600;color:${val !== null ? 'var(--green)' : 'var(--muted)'}">
+          ${val !== null ? fmt(val) : '—'}
+        </div>
+        ${lastUpdated ? `<div style="font-size:11px;color:var(--muted)">synced ${lastUpdated}</div>` : ''}
+        ${showUpdateBtn ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:6px" onclick="openAssetValueModal('${a.id}')">Update Value</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('other-assets-list').innerHTML = rows;
+
+  const satsSection = document.getElementById('sats-chart-section');
+  if (hasBtcHolding) {
+    satsSection.style.display = '';
+    buildSatsChart();
+  } else {
+    satsSection.style.display = 'none';
+  }
+}
+
+function openAssetValueModal(accountId) {
+  const a = state.accounts.find(x => x.id === accountId);
+  if (!a) return;
+  document.getElementById('asset-value-account-id').value = accountId;
+  document.getElementById('asset-value-modal-title').textContent = `Update: ${a.name}`;
+  document.getElementById('asset-value-modal-desc').textContent =
+    `Enter the current value of ${a.name}${a.institution ? ` (${a.institution})` : ''}.`;
+  document.getElementById('asset-value-date').value = today();
+  const snap = (state.snapshots || [])
+    .filter(s => s.account_id === accountId)
+    .sort((x, y) => y.snapshot_date.localeCompare(x.snapshot_date))[0];
+  document.getElementById('asset-value-amount').value = snap ? parseFloat(snap.balance).toFixed(2) : '';
+  openModal('modal-asset-value');
+}
+
+async function saveAssetValue() {
+  const accountId = document.getElementById('asset-value-account-id').value;
+  const date   = document.getElementById('asset-value-date').value;
+  const amount = parseFloat(document.getElementById('asset-value-amount').value);
+  if (!date || isNaN(amount)) { toast('Enter a valid date and amount', 'error'); return; }
+  await _saveAccountSnapshot(accountId, date, amount);
+  closeModal('modal-asset-value');
+}
+
+async function syncHoldingToSnapshot(accountId, value) {
+  await _saveAccountSnapshot(accountId, today(), value);
+}
+
+async function _saveAccountSnapshot(accountId, date, balance) {
+  const uid = getCurrentUserId();
+  try {
+    await sb.query('net_worth_snapshots', {
+      method: 'POST',
+      prefer: 'return=representation,resolution=merge-duplicates',
+      body: JSON.stringify([{ user_id: uid, snapshot_date: date, account_id: accountId, balance }]),
+      headers: { 'Prefer': 'return=representation,resolution=merge-duplicates' }
+    });
+    const snaps = await sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=200`);
+    state.snapshots = snaps || [];
+    loadNetWorth();
+    toast('Value saved!');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function refreshAssetHolding(holdingId, accountId) {
+  const h = state.holdings.find(x => x.id === holdingId);
+  if (!h) return;
+  try {
+    const price = await fetchTickerPrice(h.ticker);
+    if (!price) { toast(`No price returned for ${h.ticker}`, 'error'); return; }
+    const update = { current_price: price, as_of_date: today(), price_updated_at: new Date().toISOString(), price_open: null };
+    await sb.patch('portfolio_holdings', `id=eq.${holdingId}`, update);
+    const idx = state.holdings.findIndex(x => x.id === holdingId);
+    if (idx >= 0) state.holdings[idx] = { ...state.holdings[idx], ...update };
+    loadManualAssets();
+    toast(`${h.ticker} → ${fmtFull(price)}`);
+  } catch(e) { toast(`Failed to refresh ${h.ticker}: ${e.message}`, 'error'); }
+}
+
+async function buildSatsChart() {
+  const canvas = document.getElementById('chart-sats');
+  if (!canvas) return;
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365&interval=monthly');
+    if (!res.ok) throw new Error('CoinGecko ' + res.status);
+    const data = await res.json();
+    const prices = (data.prices || []);
+    const labels    = prices.map(p => new Date(p[0]).toLocaleDateString('en-US', { month:'short', year:'2-digit' }));
+    const btcValues = prices.map(p => p[1]);
+    const satValues = prices.map(p => p[1] / 100000000);
+    const theme = getChartTheme();
+    if (charts.sats) charts.sats.destroy();
+    charts.sats = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'USD per SAT',
+          data: satValues,
+          borderColor: '#fb923c',
+          backgroundColor: 'rgba(251,146,60,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 6
+        }]
+      },
+      options: {
+        ...getChartDefaults(),
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => ctx[0].label,
+              label: ctx => {
+                const btc = btcValues[ctx.dataIndex];
+                const sat = satValues[ctx.dataIndex];
+                return [`BTC price: ${fmtFull(btc)}`, `1 SAT: $${sat.toFixed(8)}`];
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            ticks: { color: theme.mutedColor, callback: v => `$${v.toFixed(6)}` },
+            grid: { color: theme.gridColor }
+          },
+          x: { ticks: { color: theme.mutedColor }, grid: { color: theme.gridColor } }
+        }
+      }
+    });
+  } catch(e) {
+    console.warn('SATS chart unavailable:', e.message);
+  }
 }
 
 function openNewHoldingModal() {

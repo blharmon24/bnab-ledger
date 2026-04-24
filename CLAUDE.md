@@ -153,3 +153,13 @@ SimpleFin transactions use `import_id = sf_${tx.id}`. Before inserting, existing
 - Keep all code in the single HTML file
 - Use consistent Supabase client patterns already established in the file
 - Prefer `async/await` over `.then()` chains
+
+## Session Notes
+_Cross-computer context. Update this section at the end of each session with what was worked on, what's in progress, and any important decisions made._
+
+### 2026-04-23 (home PC)
+- Added Session Notes section to CLAUDE.md for cross-computer context sharing
+- Previous session (2026-04-22): 20+ bug fixes across security, logic, data integrity, and modal state — see Bugs Fixed section
+- `scheduled-sync` edge function deployed with balance alert emails
+- **Added Other Assets feature:** new account types `real_estate`, `crypto`, `precious_metals`; "Other Assets" card on Net Worth page; manual value entry for retirement/home; BTC holdings show SATS + live price via edge function (ticker `BTC-USD`); gold holdings show oz + live price (ticker `GC=F`); historical SATS chart via CoinGecko free API; `calcNetWorthAsOf` updated to use snapshots for manual-type accounts with no transactions
+- **Next / in progress:** Nightly cron job for scheduled-sync still TODO; test BTC-USD and GC=F tickers with existing fetch-prices edge function
