@@ -436,6 +436,10 @@
     font-family: var(--font-body);
     background: rgba(255,255,255,0.01);
   }
+  .data-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  .data-table th.sortable:hover { color: var(--text2); }
+  .data-table th.sort-asc::after  { content: ' ▲'; font-size: 9px; }
+  .data-table th.sort-desc::after { content: ' ▼'; font-size: 9px; }
   .data-table td {
     padding: 11px 14px;
     border-bottom: 1px solid var(--border);
@@ -1447,8 +1451,17 @@
             <div class="card-title">Holdings</div>
           </div>
           <table class="data-table">
-            <thead><tr>
-              <th>Ticker</th><th>Name</th><th>Account</th><th>Shares</th><th style="text-align:right">Price</th><th style="text-align:right">Today</th><th style="text-align:right">Last Updated</th><th style="text-align:right">Value</th><th style="text-align:right">Gain/Loss</th><th></th>
+            <thead><tr id="holdings-thead">
+              <th class="sortable" onclick="sortHoldings('ticker')">Ticker</th>
+              <th class="sortable" onclick="sortHoldings('name')">Name</th>
+              <th class="sortable" onclick="sortHoldings('account')">Account</th>
+              <th class="sortable" onclick="sortHoldings('shares')">Shares</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('price')">Price</th>
+              <th style="text-align:right">Today</th>
+              <th style="text-align:right">Last Updated</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('value')">Value</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('gain')">Gain/Loss</th>
+              <th></th>
             </tr></thead>
             <tbody id="holdings-table"><tr><td colspan="10" class="loading">Loading...</td></tr></tbody>
           </table>
@@ -2626,6 +2639,7 @@ let state = {
 };
 
 let charts = {};
+let _holdingSort = { col: null, dir: 1 };
 
 // ── User ID helpers — defined early so everything can use them ──
 function getCurrentUserId() {
@@ -4102,6 +4116,43 @@ async function deleteAccount(id) {
 // ============================================================
 // INVESTMENTS
 // ============================================================
+function sortHoldings(col) {
+  if (_holdingSort.col === col) {
+    _holdingSort.dir *= -1;
+  } else {
+    _holdingSort.col = col;
+    _holdingSort.dir = 1;
+  }
+  loadInvestments();
+}
+
+function _applyHoldingSort(holdings, accMap) {
+  if (!_holdingSort.col) return holdings;
+  const { col, dir } = _holdingSort;
+  return [...holdings].sort((a, b) => {
+    let av, bv;
+    if (col === 'ticker')  { av = a.ticker || ''; bv = b.ticker || ''; }
+    else if (col === 'name')    { av = a.name || ''; bv = b.name || ''; }
+    else if (col === 'account') { av = accMap[a.account_id] || ''; bv = accMap[b.account_id] || ''; }
+    else if (col === 'shares')  { av = parseFloat(a.shares || 0); bv = parseFloat(b.shares || 0); }
+    else if (col === 'price')   { av = parseFloat(a.current_price || 0); bv = parseFloat(b.current_price || 0); }
+    else if (col === 'value')   { av = parseFloat(a.shares || 0) * parseFloat(a.current_price || 0); bv = parseFloat(b.shares || 0) * parseFloat(b.current_price || 0); }
+    else if (col === 'gain')    { av = (parseFloat(a.shares || 0) * parseFloat(a.current_price || 0)) - parseFloat(a.cost_basis || 0); bv = (parseFloat(b.shares || 0) * parseFloat(b.current_price || 0)) - parseFloat(b.cost_basis || 0); }
+    if (typeof av === 'string') return av.localeCompare(bv) * dir;
+    return (av - bv) * dir;
+  });
+}
+
+function _updateHoldingSortHeaders() {
+  document.querySelectorAll('#holdings-thead th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    const col = th.getAttribute('onclick')?.match(/sortHoldings\('(\w+)'\)/)?.[1];
+    if (col === _holdingSort.col) {
+      th.classList.add(_holdingSort.dir === 1 ? 'sort-asc' : 'sort-desc');
+    }
+  });
+}
+
 function loadInvestments() {
   const accMap = Object.fromEntries(state.accounts.map(a => [a.id, a.name]));
   const tbody = document.getElementById('holdings-table');
@@ -4118,7 +4169,9 @@ function loadInvestments() {
     return;
   }
 
-  tbody.innerHTML = state.holdings.map(h => {
+  const sortedHoldings = _applyHoldingSort(state.holdings, accMap);
+  _updateHoldingSortHeaders();
+  tbody.innerHTML = sortedHoldings.map(h => {
     const value = (parseFloat(h.shares) * parseFloat(h.current_price || 0));
     const cost = parseFloat(h.cost_basis || 0);
     const gain = value - cost;
