@@ -33,7 +33,7 @@ features, and adding enhancements — not rebuilding or restructuring.
 ### `accounts`
 Stores user financial accounts.
 - `id` (uuid), `user_id` (uuid, FK auth.users), `name`, `type`, `institution`, `currency` (default USD), `is_active`, `created_at`
-- Account types: `checking`, `savings`, `credit_card`, `investment`, `retirement`, `mortgage`, `loan`, `other`
+- Account types: `checking`, `savings`, `credit_card`, `investment`, `retirement`, `mortgage`, `loan`, `other`, `real_estate`, `crypto`, `precious_metals`
 
 ### `categories`
 Spending/income categories for transactions.
@@ -72,9 +72,10 @@ Key-value store for per-user app settings.
 - Transaction log with manual entry
 - Transaction import (CSV/QFX) with deduplication via `import_id`
 - Auto-categorization of transactions via keyword rules
-- Investment/portfolio tracking with price data
+- Investment/portfolio tracking with price data with sortable Holdings table
 - Account balance management
 - **SimpleFin bank sync** — pulls transactions directly from financial institutions
+- **Other Assets tracking** — retirement accounts (URS IRA/401k), real estate (home), crypto (BTC), precious metals (gold/silver) tracked via `net_worth_snapshots`; BTC shows SATS count + SATS price chart via CoinGecko; gold/silver pull live prices via `fetchTickerPrice`
 
 ## SimpleFin Integration
 Live bank/credit union transaction sync via SimpleFin Bridge (bridge.simplefin.org).
@@ -116,6 +117,8 @@ SimpleFin transactions use `import_id = sf_${tx.id}`. Before inserting, existing
 - **SimpleFin edge function uses `--no-verify-jwt`** — Supabase's ES256 session JWTs are not accepted by the Edge Function runtime. The function is deployed without JWT verification; do not add Authorization headers when calling it.
 - **`saveSetting` upsert requires `on_conflict=user_id,key`** — the `user_settings` table's primary key is `id` (not provided on insert), so upserts must specify the conflict target explicitly: `sb.query('user_settings?on_conflict=user_id,key', ...)`.
 - **`sb.query` handles empty responses** — returns `null` for 204, no-content-type, or zero-length responses. Do not assume `sb.query` always returns JSON.
+- **`accounts_type_check` DB constraint** — the `accounts` table has a CHECK constraint on `type`. Adding new account types requires an `ALTER TABLE` to drop and recreate the constraint. Updated on 2026-04-23 to include `real_estate`, `crypto`, `precious_metals`.
+- **`calcNetWorthAsOf` uses snapshots for manual accounts** — for accounts of type `retirement`, `real_estate`, `crypto`, `precious_metals` that have NO transactions, the most recent `net_worth_snapshots` entry on or before `asOfDate` is used as the balance instead of transaction sum.
 
 ## Transaction Review Mode
 - **"Needs Review" button** on the Transactions page shows a live count badge of uncategorized transactions
@@ -161,5 +164,6 @@ _Cross-computer context. Update this section at the end of each session with wha
 - Added Session Notes section to CLAUDE.md for cross-computer context sharing
 - Previous session (2026-04-22): 20+ bug fixes across security, logic, data integrity, and modal state — see Bugs Fixed section
 - `scheduled-sync` edge function deployed with balance alert emails
-- **Added Other Assets feature:** new account types `real_estate`, `crypto`, `precious_metals`; "Other Assets" card on Net Worth page; manual value entry for retirement/home; BTC holdings show SATS + live price via edge function (ticker `BTC-USD`); gold holdings show oz + live price (ticker `GC=F`); historical SATS chart via CoinGecko free API; `calcNetWorthAsOf` updated to use snapshots for manual-type accounts with no transactions
-- **Next / in progress:** Nightly cron job for scheduled-sync still TODO; test BTC-USD and GC=F tickers with existing fetch-prices edge function
+- **Other Assets feature** (v2026.04.23.1): new account types `real_estate`, `crypto`, `precious_metals`; "Other Assets" card on Net Worth page; manual value entry for retirement/home; BTC holdings (ticker `BTC-USD`) show SATS count + live price + 12-month SATS chart via CoinGecko free API; gold (ticker `GC=F`) and silver (ticker `SI=F`) show oz + live price; `calcNetWorthAsOf` updated to use snapshots for manual-type accounts with no transactions; `accounts_type_check` DB constraint updated via SQL to allow new types
+- **Sortable Holdings table** (v2026.04.23.2): click Ticker, Name, Account, Shares, Price, Value, Gain/Loss headers to sort; ▲/▼ indicator shown
+- **Next / in progress:** Nightly cron job for scheduled-sync still TODO
