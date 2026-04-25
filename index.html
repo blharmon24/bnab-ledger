@@ -4527,6 +4527,14 @@ async function simpleFinInit() {
   const mapCard = document.getElementById('simplefin-map-card');
   const syncCard = document.getElementById('simplefin-sync-card');
   const connectedMsg = document.getElementById('simplefin-connected-msg');
+
+  // Set default since-date before auto-sync fires (simpleFinSync reads it synchronously)
+  const sinceInput = document.getElementById('simplefin-since-date');
+  if (sinceInput && !sinceInput.value) {
+    const d = new Date();
+    sinceInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+
   if (accessUrl) {
     if (mapCard) mapCard.style.display = '';
     if (syncCard) syncCard.style.display = '';
@@ -4543,12 +4551,6 @@ async function simpleFinInit() {
 
     // Auto-sync if enabled
     if (autoSync) simpleFinSync();
-  }
-  // Set default since-date to first of current month
-  const sinceInput = document.getElementById('simplefin-since-date');
-  if (sinceInput && !sinceInput.value) {
-    const d = new Date();
-    sinceInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
   }
 }
 
