@@ -1033,7 +1033,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.8</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.9</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1454,6 +1454,10 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">Holdings</div>
+            <select id="holdings-account-filter" onchange="_holdingsAccountFilter=this.value;loadInvestments()"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text2);outline:none">
+              <option value="">All Accounts</option>
+            </select>
           </div>
           <div style="display:flex;overflow:hidden">
             <!-- Frozen Ticker column -->
@@ -2670,6 +2674,7 @@ let state = {
 
 let charts = {};
 let _holdingSort = { col: null, dir: 1 };
+let _holdingsAccountFilter = '';
 
 // ── User ID helpers — defined early so everything can use them ──
 function getCurrentUserId() {
@@ -4216,7 +4221,21 @@ function loadInvestments() {
     return;
   }
 
-  const sortedHoldings = _applyHoldingSort(state.holdings, accMap);
+  // Populate account filter dropdown (preserve current selection)
+  const filterEl = document.getElementById('holdings-account-filter');
+  if (filterEl) {
+    const accountIds = [...new Set(state.holdings.map(h => h.account_id))];
+    const currentVal = filterEl.value;
+    filterEl.innerHTML = '<option value="">All Accounts</option>' +
+      accountIds.map(id => `<option value="${id}"${id === currentVal ? ' selected' : ''}>${accMap[id] || id}</option>`).join('');
+    if (!accountIds.includes(currentVal)) _holdingsAccountFilter = '';
+  }
+
+  const filtered = _holdingsAccountFilter
+    ? state.holdings.filter(h => h.account_id === _holdingsAccountFilter)
+    : state.holdings;
+
+  const sortedHoldings = _applyHoldingSort(filtered, accMap);
   _updateHoldingSortHeaders();
 
   // Frozen ticker column
