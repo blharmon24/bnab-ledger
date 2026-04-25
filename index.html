@@ -1419,9 +1419,12 @@
           <div class="page-title">Investments</div>
           <div class="page-subtitle">portfolio holdings & performance</div>
         </div>
-        <div style="display:flex;gap:10px">
-          <button class="btn btn-ghost" id="refresh-all-btn" onclick="fetchAllPrices()">⟳ Refresh All Prices</button>
-          <button class="btn btn-primary" onclick="openNewHoldingModal()">+ Holding</button>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" id="refresh-all-btn" onclick="fetchAllPrices()">⟳ Refresh All Prices</button>
+            <button class="btn btn-primary" onclick="openNewHoldingModal()">+ Holding</button>
+          </div>
+          <div id="prices-staleness" style="font-size:11px;color:var(--muted)"></div>
         </div>
       </div>
 
@@ -4166,6 +4169,8 @@ function loadInvestments() {
     document.getElementById('inv-pct').textContent = '—';
     document.getElementById('inv-day-change').textContent = '—';
     document.getElementById('inv-day-change-sub').textContent = '';
+    const stalenessEl = document.getElementById('prices-staleness');
+    if (stalenessEl) stalenessEl.textContent = '';
     return;
   }
 
@@ -4257,6 +4262,29 @@ function loadInvestments() {
     dayEl.className = 'stat-value';
     daySubEl.textContent = 'Refresh prices to calculate';
     daySubEl.style.color = 'var(--muted)';
+  }
+
+  // Staleness indicator: show how old the least-recently-updated price is
+  const stalenessEl = document.getElementById('prices-staleness');
+  if (stalenessEl) {
+    const timestamps = state.holdings
+      .filter(h => h.price_updated_at)
+      .map(h => new Date(h.price_updated_at).getTime());
+    if (timestamps.length) {
+      const oldest = Math.min(...timestamps);
+      const diffMs = Date.now() - oldest;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHrs = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHrs / 24);
+      let age;
+      if (diffMins < 1) age = 'just now';
+      else if (diffMins < 60) age = `${diffMins}m ago`;
+      else if (diffHrs < 24) age = `${diffHrs}h ago`;
+      else age = `${diffDays}d ago`;
+      stalenessEl.textContent = `Oldest price: ${age}`;
+    } else {
+      stalenessEl.textContent = '';
+    }
   }
 
   buildPortfolioGrowthChart();
