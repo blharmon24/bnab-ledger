@@ -422,7 +422,6 @@
   /* GRID LAYOUTS */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-  .inv-layout-grid { display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: start; }
 
   /* TABLE */
   .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -902,7 +901,7 @@
     }
 
     #main { padding: 16px; padding-top: 60px; }
-    .two-col, .three-col, .inv-layout-grid { grid-template-columns: 1fr; }
+    .two-col, .three-col { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
     .stat-grid { grid-template-columns: 1fr 1fr; }
     .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -1035,7 +1034,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.12</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.13</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1452,46 +1451,46 @@
         </div>
       </div>
 
-      <div class="inv-layout-grid">
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">Holdings</div>
-            <select id="holdings-account-filter" onchange="_holdingsAccountFilter=this.value;loadInvestments()"
-              style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text2);outline:none">
-              <option value="">All Accounts</option>
-            </select>
-          </div>
-          <div style="overflow-x:auto">
-            <table class="data-table">
-              <thead><tr id="holdings-thead">
-                <th class="sortable" onclick="sortHoldings('ticker')">Ticker</th>
-                <th class="sortable" onclick="sortHoldings('name')">Name</th>
-                <th class="sortable" onclick="sortHoldings('account')">Account</th>
-                <th class="sortable" onclick="sortHoldings('shares')">Shares</th>
-                <th class="sortable" style="text-align:right" onclick="sortHoldings('price')">Price</th>
-                <th class="sortable" style="text-align:right" onclick="sortHoldings('today')">Today</th>
-                <th style="text-align:right">Last Updated</th>
-                <th class="sortable" style="text-align:right" onclick="sortHoldings('value')">Value</th>
-                <th class="sortable" style="text-align:right" onclick="sortHoldings('gain')">Gain/Loss</th>
-                <th></th>
-              </tr></thead>
-              <tbody id="holdings-table"><tr><td colspan="10" class="loading">Loading...</td></tr></tbody>
-            </table>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Holdings</div>
+          <select id="holdings-account-filter" onchange="_holdingsAccountFilter=this.value;loadInvestments()"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text2);outline:none">
+            <option value="">All Accounts</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr id="holdings-thead">
+              <th class="sortable" onclick="sortHoldings('ticker')">Ticker</th>
+              <th class="sortable" onclick="sortHoldings('name')">Name</th>
+              <th class="sortable" onclick="sortHoldings('account')">Account</th>
+              <th class="sortable" onclick="sortHoldings('shares')">Shares</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('price')">Price</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('today')">Today</th>
+              <th style="text-align:right">Last Updated</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('value')">Value</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('gain')">Gain/Loss</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="holdings-table"><tr><td colspan="10" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Allocation</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" id="alloc-by-ticker" onclick="setAllocView('ticker')">By Ticker</button>
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" id="alloc-by-account" onclick="setAllocView('account')">By Account</button>
           </div>
         </div>
-
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">Allocation</div>
-            <div style="display:flex;gap:6px">
-              <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" id="alloc-by-ticker" onclick="setAllocView('ticker')">By Ticker</button>
-              <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" id="alloc-by-account" onclick="setAllocView('account')">By Account</button>
-            </div>
-          </div>
-          <div style="position:relative;height:220px;display:flex;align-items:center;justify-content:center">
+        <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+          <div style="position:relative;height:260px;width:260px;flex-shrink:0">
             <canvas id="chart-allocation"></canvas>
           </div>
-          <div id="allocation-legend" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
+          <div id="allocation-legend" style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
         </div>
       </div>
 
