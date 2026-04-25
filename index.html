@@ -1033,7 +1033,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.9</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.10</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1459,33 +1459,22 @@
               <option value="">All Accounts</option>
             </select>
           </div>
-          <div style="display:flex;overflow:hidden">
-            <!-- Frozen Ticker column -->
-            <div style="flex-shrink:0;background:var(--surface);border-right:2px solid var(--border)">
-              <table class="data-table">
-                <thead><tr>
-                  <th class="sortable" id="holdings-frozen-th" onclick="sortHoldings('ticker')">Ticker</th>
-                </tr></thead>
-                <tbody id="holdings-frozen-body"></tbody>
-              </table>
-            </div>
-            <!-- Scrollable remaining columns -->
-            <div style="overflow-x:auto;flex:1;min-width:0">
-              <table class="data-table">
-                <thead><tr id="holdings-thead">
-                  <th class="sortable" onclick="sortHoldings('name')">Name</th>
-                  <th class="sortable" onclick="sortHoldings('account')">Account</th>
-                  <th class="sortable" onclick="sortHoldings('shares')">Shares</th>
-                  <th class="sortable" style="text-align:right" onclick="sortHoldings('price')">Price</th>
-                  <th class="sortable" style="text-align:right" onclick="sortHoldings('today')">Today</th>
-                  <th style="text-align:right">Last Updated</th>
-                  <th class="sortable" style="text-align:right" onclick="sortHoldings('value')">Value</th>
-                  <th class="sortable" style="text-align:right" onclick="sortHoldings('gain')">Gain/Loss</th>
-                  <th></th>
-                </tr></thead>
-                <tbody id="holdings-table"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
-              </table>
-            </div>
+          <div style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr id="holdings-thead">
+                <th class="sortable" onclick="sortHoldings('ticker')">Ticker</th>
+                <th class="sortable" onclick="sortHoldings('name')">Name</th>
+                <th class="sortable" onclick="sortHoldings('account')">Account</th>
+                <th class="sortable" onclick="sortHoldings('shares')">Shares</th>
+                <th class="sortable" style="text-align:right" onclick="sortHoldings('price')">Price</th>
+                <th class="sortable" style="text-align:right" onclick="sortHoldings('today')">Today</th>
+                <th style="text-align:right">Last Updated</th>
+                <th class="sortable" style="text-align:right" onclick="sortHoldings('value')">Value</th>
+                <th class="sortable" style="text-align:right" onclick="sortHoldings('gain')">Gain/Loss</th>
+                <th></th>
+              </tr></thead>
+              <tbody id="holdings-table"><tr><td colspan="10" class="loading">Loading...</td></tr></tbody>
+            </table>
           </div>
         </div>
 
@@ -4185,32 +4174,16 @@ function _updateHoldingSortHeaders() {
     const col = th.getAttribute('onclick')?.match(/sortHoldings\('(\w+)'\)/)?.[1];
     if (col === _holdingSort.col) th.classList.add(_holdingSort.dir === 1 ? 'sort-asc' : 'sort-desc');
   });
-  const frozenTh = document.getElementById('holdings-frozen-th');
-  if (frozenTh) {
-    frozenTh.classList.remove('sort-asc', 'sort-desc');
-    if (_holdingSort.col === 'ticker') frozenTh.classList.add(_holdingSort.dir === 1 ? 'sort-asc' : 'sort-desc');
-  }
-}
-
-function syncHoldingsRowHeights() {
-  const mainRows = [...document.querySelectorAll('#holdings-table tr')];
-  const frozenRows = [...document.querySelectorAll('#holdings-frozen-body tr')];
-  const mainHead = document.getElementById('holdings-thead');
-  const frozenHead = document.getElementById('holdings-frozen-th')?.closest('tr');
-  if (mainHead && frozenHead) frozenHead.style.height = mainHead.offsetHeight + 'px';
-  mainRows.forEach((row, i) => { if (frozenRows[i]) frozenRows[i].style.height = row.offsetHeight + 'px'; });
 }
 
 function loadInvestments() {
   const accMap = Object.fromEntries(state.accounts.map(a => [a.id, a.name]));
   const tbody = document.getElementById('holdings-table');
-  const frozenBody = document.getElementById('holdings-frozen-body');
 
   let totalValue = 0, totalCost = 0, totalDayChange = 0, dayChangeValid = false;
 
   if (!state.holdings.length) {
-    frozenBody.innerHTML = '';
-    tbody.innerHTML = '<tr><td colspan="9" class="loading">No holdings yet. Add one!</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">No holdings yet. Add one!</td></tr>';
     document.getElementById('inv-total').textContent = '—';
     document.getElementById('inv-gain').textContent = '—';
     document.getElementById('inv-pct').textContent = '—';
@@ -4238,12 +4211,6 @@ function loadInvestments() {
   const sortedHoldings = _applyHoldingSort(filtered, accMap);
   _updateHoldingSortHeaders();
 
-  // Frozen ticker column
-  frozenBody.innerHTML = sortedHoldings.map(h =>
-    `<tr><td><strong>${h.ticker}</strong></td></tr>`
-  ).join('');
-
-  // Scrollable remaining columns
   tbody.innerHTML = sortedHoldings.map(h => {
     const value = (parseFloat(h.shares) * parseFloat(h.current_price || 0));
     const cost = parseFloat(h.cost_basis || 0);
@@ -4285,6 +4252,7 @@ function loadInvestments() {
 
     return `
       <tr>
+        <td><strong>${h.ticker}</strong></td>
         <td style="color:var(--muted)">${h.name || '—'}</td>
         <td>${accMap[h.account_id] || '—'}</td>
         <td>${parseFloat(h.shares).toFixed(3)}</td>
@@ -4304,8 +4272,6 @@ function loadInvestments() {
         </td>
       </tr>`;
   }).join('');
-
-  syncHoldingsRowHeights();
 
   const totalGain = totalValue - totalCost;
   const pct = totalCost > 0 ? (totalGain / totalCost * 100) : 0;
