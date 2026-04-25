@@ -167,3 +167,10 @@ _Cross-computer context. Update this section at the end of each session with wha
 - **Other Assets feature** (v2026.04.23.1): new account types `real_estate`, `crypto`, `precious_metals`; "Other Assets" card on Net Worth page; manual value entry for retirement/home; BTC holdings (ticker `BTC-USD`) show SATS count + live price + 12-month SATS chart via CoinGecko free API; gold (ticker `GC=F`) and silver (ticker `SI=F`) show oz + live price; `calcNetWorthAsOf` updated to use snapshots for manual-type accounts with no transactions; `accounts_type_check` DB constraint updated via SQL to allow new types
 - **Sortable Holdings table** (v2026.04.23.2): click Ticker, Name, Account, Shares, Price, Value, Gain/Loss headers to sort; ▲/▼ indicator shown
 - **Next / in progress:** Nightly cron job for scheduled-sync still TODO
+
+### 2026-04-24 (home PC)
+- **SimpleFin auto-sync bug fix** (v2026.04.24.1): `simpleFinSync()` read the since-date input synchronously before `simpleFinInit()` set its default, so auto-sync always sent `start_date=null` and got no transactions. Fixed by moving since-date defaulting above the `if (accessUrl)` block.
+- **Price staleness indicator** (v2026.04.24.2): "Oldest price: Xm/h/d ago" label added below Refresh All Prices button on Investments page; derived from `min(price_updated_at)` across holdings.
+- **Today column sort** (v2026.04.24.3): Today column in Holdings table is now sortable; sorts by total day-change `(current_price - price_open) × shares`.
+- **Version bump discipline**: User confirmed version must be bumped with every commit (`v{year}.{month}.{day}.{sequence}` format).
+- **Next / in progress:** Nightly cron job for scheduled-sync still TODO
