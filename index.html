@@ -143,7 +143,8 @@
     font-family: var(--font-body);
     font-size: 14px;
     min-height: 100vh;
-    overflow-x: hidden;
+    overflow-x: hidden; /* fallback for browsers without clip */
+    overflow-x: clip;   /* clip doesn't create a scroll container, so position:sticky works */
     -webkit-font-smoothing: antialiased;
   }
 
@@ -450,10 +451,10 @@
   .data-table tr:last-child td { border-bottom: none; }
   .data-table tr:hover td { background: rgba(109,106,247,0.04); color: var(--text); }
 
-  /* Holdings table — JS-driven frozen first column (position:sticky is blocked by body overflow-x:hidden) */
+  /* Holdings table — frozen first column via CSS sticky */
   .holdings-table { border-collapse: separate; border-spacing: 0; }
   .holdings-table th:first-child,
-  .holdings-table td:first-child { position: relative; z-index: 2; background: var(--surface); will-change: transform; }
+  .holdings-table td:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); }
   .holdings-table tr:hover td:first-child { background: var(--surface3); }
 
   .amount-pos { color: var(--green); font-weight: 500; }
@@ -1037,7 +1038,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.6</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.7</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1459,7 +1460,7 @@
           <div class="card-header">
             <div class="card-title">Holdings</div>
           </div>
-          <div class="holdings-scroll-wrap" style="overflow-x:auto" onscroll="syncHoldingsTicker(this)">
+          <div style="overflow-x:auto">
           <table class="data-table holdings-table">
             <thead><tr id="holdings-thead">
               <th class="sortable" onclick="sortHoldings('ticker')">Ticker</th>
@@ -4139,12 +4140,6 @@ async function deleteAccount(id) {
 // ============================================================
 // INVESTMENTS
 // ============================================================
-function syncHoldingsTicker(wrap) {
-  const x = wrap.scrollLeft;
-  wrap.querySelectorAll('.holdings-table th:first-child, .holdings-table td:first-child')
-    .forEach(el => { el.style.transform = x > 0 ? `translateX(${x}px)` : ''; });
-}
-
 function sortHoldings(col) {
   if (_holdingSort.col === col) {
     _holdingSort.dir *= -1;
