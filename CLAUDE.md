@@ -169,6 +169,14 @@ _Cross-computer context. Update this section at the end of each session with wha
 - **Next / in progress:** Nightly cron job for scheduled-sync still TODO
 
 ### 2026-04-24 (home PC)
+- **Daily portfolio chart** (v2026.04.24.4): new "Portfolio Value — Daily" card on Investments page with month picker; shows day-by-day investment balance for any selected month; uses live holdings value for current day
+- **Account filter on Holdings** (v2026.04.24.9): dropdown in Holdings card header filters table by account name
+- **Sidebar footer fix** (v2026.04.24.11): theme toggle / Sign Out were hidden on short screens due to flex:1 spacer; nav items now scroll in inner div, footer always pinned at bottom
+- **Investments page horizontal scroll fix** (v2026.04.24.13): Allocation doughnut chart moved to full-width card below Holdings; eliminates horizontal scroll on mobile. Chart is 260px with legend alongside on desktop, wraps on mobile
+- **Attempted frozen Ticker column** — abandoned after extensive attempts; CSS sticky blocked by body overflow-x and mobile browser quirks; two-table approach caused double-swipe scroll bug on iOS. Do not retry.
+- **Current version:** v2026.04.24.13
+
+### 2026-04-24 (home PC)
 - **SimpleFin auto-sync bug fix** (v2026.04.24.1): `simpleFinSync()` read the since-date input synchronously before `simpleFinInit()` set its default, so auto-sync always sent `start_date=null` and got no transactions. Fixed by moving since-date defaulting above the `if (accessUrl)` block.
 - **Price staleness indicator** (v2026.04.24.2): "Oldest price: Xm/h/d ago" label added below Refresh All Prices button on Investments page; derived from `min(price_updated_at)` across holdings.
 - **Today column sort** (v2026.04.24.3): Today column in Holdings table is now sortable; sorts by total day-change `(current_price - price_open) × shares`.
