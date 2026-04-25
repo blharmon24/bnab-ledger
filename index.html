@@ -422,6 +422,7 @@
   /* GRID LAYOUTS */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .inv-layout-grid { display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: start; }
 
   /* TABLE */
   .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -901,7 +902,7 @@
     }
 
     #main { padding: 16px; padding-top: 60px; }
-    .two-col, .three-col { grid-template-columns: 1fr; }
+    .two-col, .three-col, .inv-layout-grid { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
     .stat-grid { grid-template-columns: 1fr 1fr; }
     .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -1034,7 +1035,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.11</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.12</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1451,7 +1452,7 @@
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
+      <div class="inv-layout-grid">
         <div class="card">
           <div class="card-header">
             <div class="card-title">Holdings</div>
