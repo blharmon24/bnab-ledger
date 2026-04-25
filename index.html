@@ -1460,7 +1460,7 @@
               <th class="sortable" onclick="sortHoldings('account')">Account</th>
               <th class="sortable" onclick="sortHoldings('shares')">Shares</th>
               <th class="sortable" style="text-align:right" onclick="sortHoldings('price')">Price</th>
-              <th style="text-align:right">Today</th>
+              <th class="sortable" style="text-align:right" onclick="sortHoldings('today')">Today</th>
               <th style="text-align:right">Last Updated</th>
               <th class="sortable" style="text-align:right" onclick="sortHoldings('value')">Value</th>
               <th class="sortable" style="text-align:right" onclick="sortHoldings('gain')">Gain/Loss</th>
@@ -4139,6 +4139,7 @@ function _applyHoldingSort(holdings, accMap) {
     else if (col === 'account') { av = accMap[a.account_id] || ''; bv = accMap[b.account_id] || ''; }
     else if (col === 'shares')  { av = parseFloat(a.shares || 0); bv = parseFloat(b.shares || 0); }
     else if (col === 'price')   { av = parseFloat(a.current_price || 0); bv = parseFloat(b.current_price || 0); }
+    else if (col === 'today')   { av = (a.current_price && a.price_open) ? (parseFloat(a.current_price) - parseFloat(a.price_open)) * parseFloat(a.shares || 0) : 0; bv = (b.current_price && b.price_open) ? (parseFloat(b.current_price) - parseFloat(b.price_open)) * parseFloat(b.shares || 0) : 0; }
     else if (col === 'value')   { av = parseFloat(a.shares || 0) * parseFloat(a.current_price || 0); bv = parseFloat(b.shares || 0) * parseFloat(b.current_price || 0); }
     else if (col === 'gain')    { av = (parseFloat(a.shares || 0) * parseFloat(a.current_price || 0)) - parseFloat(a.cost_basis || 0); bv = (parseFloat(b.shares || 0) * parseFloat(b.current_price || 0)) - parseFloat(b.cost_basis || 0); }
     if (typeof av === 'string') return av.localeCompare(bv) * dir;
