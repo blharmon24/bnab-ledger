@@ -451,6 +451,8 @@
   .data-table tr:hover td { background: rgba(109,106,247,0.04); color: var(--text); }
 
   /* Holdings table — sticky first column (Ticker) for horizontal scroll */
+  /* border-collapse:separate is required; border-collapse:collapse breaks position:sticky on iOS WebKit */
+  .holdings-table { border-collapse: separate; border-spacing: 0; }
   .holdings-table th:first-child,
   .holdings-table td:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); }
   .holdings-table tr:hover td:first-child { background: var(--surface3); }
@@ -1036,7 +1038,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.4</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.5</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
