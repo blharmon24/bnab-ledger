@@ -1034,7 +1034,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.04.24.13</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.11.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -7778,7 +7778,7 @@ function loadCashFlow() {
 
   const rows = months.map(m => {
     const mTxns    = state.allTransactions.filter(t => t.date.startsWith(m));
-    const income   = mTxns.filter(t => t.type === 'income').reduce((s,t) => s + parseFloat(t.amount), 0);
+    const income   = mTxns.filter(t => t.type === 'income' && !isDebtPayment(t)).reduce((s,t) => s + parseFloat(t.amount), 0);
     const expenses = realExpenses(mTxns).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
     const net      = income - expenses;
     return { month: m, label: monthLabel(m), income, expenses, net };
@@ -7830,7 +7830,7 @@ function exportCashFlowCSV() {
   const rows = [['Month', 'Income', 'Expenses', 'Net Cash Flow', 'Cumulative']];
   months.forEach(m => {
     const mTxns    = state.allTransactions.filter(t => t.date.startsWith(m));
-    const income   = mTxns.filter(t => t.type === 'income').reduce((s,t) => s + parseFloat(t.amount), 0);
+    const income   = mTxns.filter(t => t.type === 'income' && !isDebtPayment(t)).reduce((s,t) => s + parseFloat(t.amount), 0);
     const expenses = realExpenses(mTxns).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
     const net      = income - expenses;
     cumulative    += net;
@@ -7856,7 +7856,7 @@ function loadSavingsRate() {
 
   const rows = months.map(m => {
     const mTxns    = state.allTransactions.filter(t => t.date.startsWith(m));
-    const income   = mTxns.filter(t => t.type === 'income').reduce((s,t) => s + parseFloat(t.amount), 0);
+    const income   = mTxns.filter(t => t.type === 'income' && !isDebtPayment(t)).reduce((s,t) => s + parseFloat(t.amount), 0);
     const expenses = realExpenses(mTxns).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
     const saved    = income - expenses;
     const rate     = income > 0 ? (saved / income) * 100 : null;
