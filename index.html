@@ -1034,7 +1034,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.11.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.15.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1354,6 +1354,13 @@
             <option value="__none__">Uncategorized</option>
           </select>
           <input type="month" id="txn-filter-month" onchange="filterTransactions()">
+        </div>
+
+        <!-- Mass verify / reconcile toolbar -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px" onclick="massSetVerified(true)" title="Mark all currently visible transactions as verified">✓ Verify All</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px" onclick="massSetVerified(false)" title="Mark all currently visible transactions as unverified">✗ Unverify All</button>
+          <button class="btn btn-ghost" id="reconcile-btn" style="display:none;padding:5px 12px;font-size:12px;margin-left:auto" onclick="openReconcileModal()" title="Set a reconciliation checkpoint for this account">⊙ Reconcile</button>
         </div>
 
         <!-- Bulk action toolbar (hidden until rows selected) -->
@@ -2580,6 +2587,36 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-group-color')">Cancel</button>
       <button class="btn btn-primary" onclick="applyGroupColor()">Apply to All Categories in Group</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reconcile Checkpoint Modal -->
+<div class="modal-overlay" id="modal-reconcile" onclick="if(event.target===this)closeModal('modal-reconcile')">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title">Reconcile: <span id="reconcile-acct-name"></span></div>
+      <button class="modal-close" onclick="closeModal('modal-reconcile')">✕</button>
+    </div>
+    <input type="hidden" id="reconcile-acct-id">
+    <p style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+      Record the closing date and ending balance from a verified bank statement. A divider will appear in your transaction list at this date — everything below it is already reconciled.
+    </p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Statement Closing Date</label>
+        <input type="date" id="reconcile-date">
+      </div>
+      <div class="form-group">
+        <label>Statement Ending Balance</label>
+        <input type="number" id="reconcile-balance" step="0.01" placeholder="e.g. 1234.56">
+      </div>
+    </div>
+    <div id="reconcile-existing-info" style="display:none;padding:10px 12px;background:rgba(20,184,166,0.08);border:1px solid rgba(20,184,166,0.25);border-radius:8px;font-size:12px;margin-bottom:4px;color:var(--accent3)"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-reconcile')">Cancel</button>
+      <button class="btn btn-danger" id="reconcile-clear-btn" style="display:none" onclick="clearReconcileCheckpoint()">Remove</button>
+      <button class="btn btn-primary" onclick="saveReconcileCheckpoint()">Save Checkpoint</button>
     </div>
   </div>
 </div>
@@ -3946,7 +3983,16 @@ function filterTransactions() {
     if (balHeader) balHeader.style.display = 'none';
   }
 
-  renderTransactionRows(txns, _currentRunningBalMap);
+  // Show Reconcile button only when filtering to a single account
+  const reconcileBtn = document.getElementById('reconcile-btn');
+  if (reconcileBtn) reconcileBtn.style.display = accFilter ? '' : 'none';
+
+  // Get reconciliation checkpoint for this account (if any)
+  let _allCps = {};
+  try { _allCps = JSON.parse(_settingsCache['reconcile_checkpoints'] || '{}'); } catch(e) {}
+  const checkpoint = accFilter ? (_allCps[accFilter] || null) : null;
+
+  renderTransactionRows(txns, _currentRunningBalMap, checkpoint);
   updateReviewBadge();
   updateBulkToolbar();
 }
@@ -4004,6 +4050,79 @@ async function toggleVerified(id, checkbox) {
     checkbox.checked = !newVal; // revert on error
     toast('Error: ' + e.message, 'error');
   }
+}
+
+async function massSetVerified(value) {
+  const txns = currentFilteredTxns;
+  if (!txns.length) { toast('No transactions visible', 'error'); return; }
+  const label = value ? 'verified' : 'unverified';
+  if (!confirm(`Mark all ${txns.length} visible transaction${txns.length !== 1 ? 's' : ''} as ${label}?`)) return;
+  const ids = txns.map(t => t.id);
+  try {
+    await sb.patch('transactions', `id=in.(${ids.join(',')})`, { cleared: value });
+    ids.forEach(id => {
+      const t = state.allTransactions.find(t => t.id === id);
+      if (t) t.cleared = value;
+    });
+    filterTransactions();
+    toast(`${txns.length} transaction${txns.length !== 1 ? 's' : ''} marked as ${label}`);
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+function openReconcileModal() {
+  const accFilter = document.getElementById('txn-filter-account').value;
+  if (!accFilter) { toast('Please filter by a single account first', 'error'); return; }
+  const acc = state.accounts.find(a => a.id === accFilter);
+  if (!acc) return;
+  document.getElementById('reconcile-acct-name').textContent = acc.name;
+  document.getElementById('reconcile-acct-id').value = accFilter;
+  let checkpoints = {};
+  try { checkpoints = JSON.parse(_settingsCache['reconcile_checkpoints'] || '{}'); } catch(e) {}
+  const cp = checkpoints[accFilter];
+  const infoEl = document.getElementById('reconcile-existing-info');
+  const clearBtn = document.getElementById('reconcile-clear-btn');
+  if (cp) {
+    document.getElementById('reconcile-date').value = cp.date;
+    document.getElementById('reconcile-balance').value = cp.balance;
+    infoEl.textContent = `Current checkpoint: through ${fmtDate(cp.date)} — ${fmtFull(cp.balance)}`;
+    infoEl.style.display = '';
+    clearBtn.style.display = '';
+  } else {
+    document.getElementById('reconcile-date').value = today();
+    document.getElementById('reconcile-balance').value = '';
+    infoEl.style.display = 'none';
+    clearBtn.style.display = 'none';
+  }
+  openModal('modal-reconcile');
+}
+
+async function saveReconcileCheckpoint() {
+  const accId = document.getElementById('reconcile-acct-id').value;
+  const date = document.getElementById('reconcile-date').value;
+  const balStr = document.getElementById('reconcile-balance').value;
+  if (!date) { toast('Please enter a closing date', 'error'); return; }
+  if (balStr === '' || isNaN(parseFloat(balStr))) { toast('Please enter a valid balance', 'error'); return; }
+  let checkpoints = {};
+  try { checkpoints = JSON.parse(_settingsCache['reconcile_checkpoints'] || '{}'); } catch(e) {}
+  checkpoints[accId] = { date, balance: parseFloat(balStr), saved_at: new Date().toISOString() };
+  await saveSetting('reconcile_checkpoints', checkpoints);
+  closeModal('modal-reconcile');
+  filterTransactions();
+  toast('Reconciliation checkpoint saved');
+}
+
+async function clearReconcileCheckpoint() {
+  if (!confirm('Remove this reconciliation checkpoint?')) return;
+  const accId = document.getElementById('reconcile-acct-id').value;
+  let checkpoints = {};
+  try { checkpoints = JSON.parse(_settingsCache['reconcile_checkpoints'] || '{}'); } catch(e) {}
+  delete checkpoints[accId];
+  await saveSetting('reconcile_checkpoints', checkpoints);
+  closeModal('modal-reconcile');
+  filterTransactions();
+  toast('Checkpoint removed');
 }
 
 // ============================================================
@@ -6708,7 +6827,7 @@ function populateCategoryFilter() {
     state.categories.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
 }
 
-function renderTransactionRows(txns, runningBalMap = null) {
+function renderTransactionRows(txns, runningBalMap = null, checkpoint = null) {
   const accMap = Object.fromEntries(state.accounts.map(a => [a.id, a.name]));
   const catMap = Object.fromEntries(state.categories.map(c => [c.id, c]));
   const tbody = document.getElementById('transactions-table');
@@ -6716,6 +6835,18 @@ function renderTransactionRows(txns, runningBalMap = null) {
     tbody.innerHTML = '<tr><td colspan="10" class="loading">No transactions match.</td></tr>';
     return;
   }
+
+  // Separator row injected once between newer and reconciled transactions
+  const cpDate = checkpoint ? checkpoint.date : null;
+  const separatorHtml = checkpoint ? `
+    <tr>
+      <td colspan="10" style="padding:6px 14px;background:rgba(20,184,166,0.06);border-top:2px solid rgba(20,184,166,0.35);border-bottom:2px solid rgba(20,184,166,0.35);text-align:center;font-size:11px;color:var(--accent3)">
+        ✓ Reconciled through ${fmtDate(checkpoint.date)} — Statement balance: ${fmtFull(checkpoint.balance)}
+        <button onclick="openReconcileModal()" style="margin-left:10px;font-size:10px;border:none;background:none;color:var(--muted);cursor:pointer;text-decoration:underline">edit</button>
+      </td>
+    </tr>` : '';
+  let separatorInserted = false;
+
   tbody.innerHTML = txns.map((t, idx) => {
     const cat     = catMap[t.category_id];
     const checked = selectedTxnIds.has(t.id) ? 'checked' : '';
@@ -6742,7 +6873,14 @@ function renderTransactionRows(txns, runningBalMap = null) {
       ? `<td style="text-align:right;font-variant-numeric:tabular-nums" class="${bal >= 0 ? 'amount-pos' : 'amount-neg'}">${fmtFull(bal)}</td>`
       : `<td style="display:none"></td>`;
 
-    return `
+    // Inject reconcile separator before first transaction on or before checkpoint date
+    let prefix = '';
+    if (!separatorInserted && cpDate && t.date <= cpDate) {
+      prefix = separatorHtml;
+      separatorInserted = true;
+    }
+
+    return prefix + `
     <tr class="${selectedTxnIds.has(t.id) ? 'selected-row' : ''}">
       <td><input type="checkbox" ${checked} onchange="toggleTxnSelect('${t.id}', ${idx}, event)"></td>
       <td>${fmtDate(t.date)}</td>
