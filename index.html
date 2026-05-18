@@ -2854,7 +2854,7 @@ function showPage(page, updateHash = true) {
   if (page === 'spending')     loadSpending();
   if (page === 'transactions') { populateCategoryFilter(); populateBulkCategorySelect(); loadTransactions(); }
   if (page === 'accounts')     loadAccounts();
-  if (page === 'investments')  loadInvestments();
+  if (page === 'investments')  { loadInvestments(); saveInvestmentSnapshots(); }
   if (page === 'import')       { loadImportPage(); simpleFinInit(); }
   if (page === 'rules')        loadRulesPage();
   if (page === 'categories')   loadCategoriesPage();
@@ -2960,7 +2960,7 @@ async function init() {
       sb.get('accounts', `user_id=eq.${uid}&is_active=eq.true&order=name`),
       sb.get('categories', `user_id=eq.${uid}&order=group_name,name`),
       fetchAllTransactions(),
-      Promise.resolve([]),
+      sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=500`).catch(() => []),
       sb.get('portfolio_holdings', `user_id=eq.${uid}&order=ticker`).catch(() => [])
     ]);
 
@@ -4447,14 +4447,32 @@ function loadInvestments() {
   buildAllocationChart('ticker');
 }
 
+function getInvestmentValueAsOf(dateStr) {
+  const investmentTypes = ['investment', 'retirement'];
+  const todayStr = today();
+  return state.accounts
+    .filter(a => investmentTypes.includes(a.type))
+    .reduce((total, a) => {
+      if (dateStr >= todayStr) {
+        const acctHoldings = state.holdings.filter(h => h.account_id === a.id);
+        if (acctHoldings.length) {
+          return total + acctHoldings.reduce((s, h) =>
+            s + parseFloat(h.shares || 0) * parseFloat(h.current_price || 0), 0);
+        }
+      }
+      const snap = (state.snapshots || [])
+        .filter(s => s.account_id === a.id && s.snapshot_date <= dateStr)
+        .sort((x, y) => y.snapshot_date.localeCompare(x.snapshot_date))[0];
+      if (snap) return total + parseFloat(snap.balance);
+      return total + state.allTransactions
+        .filter(t => t.account_id === a.id && t.date <= dateStr)
+        .reduce((s, t) => s + parseFloat(t.amount), 0);
+    }, 0);
+}
+
 function buildPortfolioGrowthChart() {
   const canvas = document.getElementById('chart-portfolio-growth');
   if (!canvas) return;
-
-  // Build monthly portfolio values for last 12 months
-  // Strategy: use investment/retirement account balances calculated from transactions
-  const investmentTypes = ['investment', 'retirement'];
-  const investAccounts = state.accounts.filter(a => investmentTypes.includes(a.type));
 
   const now = new Date();
   const labels = [];
@@ -4464,26 +4482,8 @@ function buildPortfolioGrowthChart() {
     const d = new Date(now.getFullYear(), now.getMonth() - i + 1, 0); // last day of month
     const dateStr = d.toISOString().slice(0, 10);
     const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-
-    // Sum balances of investment accounts as of this date
-    let monthVal = 0;
-    investAccounts.forEach(a => {
-      const bal = state.allTransactions
-        .filter(t => t.account_id === a.id && t.date <= dateStr)
-        .reduce((s, t) => s + parseFloat(t.amount), 0);
-      monthVal += bal;
-    });
-
-    // Add current holdings value for the most recent month
-    if (i === 0 && state.holdings.length) {
-      const holdingsVal = state.holdings.reduce((s, h) =>
-        s + (parseFloat(h.shares || 0) * parseFloat(h.current_price || 0)), 0);
-      // Use holdings value if it's larger (more accurate than transaction sum)
-      if (holdingsVal > monthVal) monthVal = holdingsVal;
-    }
-
     labels.push(label);
-    values.push(Math.max(0, monthVal));
+    values.push(Math.max(0, getInvestmentValueAsOf(dateStr)));
   }
 
   if (charts.portfolioGrowth) charts.portfolioGrowth.destroy();
@@ -4551,10 +4551,6 @@ function buildPortfolioDailyChart() {
   const [year, month] = picker.value.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
   const todayStr = now.toISOString().slice(0, 10);
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
-
-  const investmentTypes = ['investment', 'retirement'];
-  const investAccounts = state.accounts.filter(a => investmentTypes.includes(a.type));
 
   const labels = [];
   const values = [];
@@ -4562,24 +4558,8 @@ function buildPortfolioDailyChart() {
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     if (dateStr > todayStr) break;
-
     labels.push(day);
-
-    let dayVal = 0;
-    investAccounts.forEach(a => {
-      dayVal += state.allTransactions
-        .filter(t => t.account_id === a.id && t.date <= dateStr)
-        .reduce((s, t) => s + parseFloat(t.amount), 0);
-    });
-
-    // On the last computed day of the current month, prefer live holdings value
-    if (isCurrentMonth && dateStr === todayStr && state.holdings.length) {
-      const liveVal = state.holdings.reduce((s, h) =>
-        s + (parseFloat(h.shares || 0) * parseFloat(h.current_price || 0)), 0);
-      if (liveVal > dayVal) dayVal = liveVal;
-    }
-
-    values.push(Math.max(0, dayVal));
+    values.push(Math.max(0, getInvestmentValueAsOf(dateStr)));
   }
 
   if (charts.portfolioDaily) charts.portfolioDaily.destroy();
@@ -6412,6 +6392,7 @@ async function fetchAllPrices() {
     const fresh = await sb.get('portfolio_holdings', `user_id=eq.${getCurrentUserId()}&order=ticker`).catch(() => null);
     if (fresh) state.holdings = fresh;
 
+    await saveInvestmentSnapshots();
     loadInvestments();
 
     const failed = data.failed || 0;
@@ -6423,6 +6404,40 @@ async function fetchAllPrices() {
   } finally {
     btn.textContent = '⟳ Refresh All Prices';
     btn.disabled = false;
+  }
+}
+
+async function saveInvestmentSnapshots() {
+  if (!state.holdings || !state.holdings.length) return;
+  const uid = getCurrentUserId();
+  if (!uid) return;
+  const todayStr = today();
+  const investmentTypes = ['investment', 'retirement'];
+
+  const accountValues = {};
+  state.holdings.forEach(h => {
+    const acct = state.accounts.find(a => a.id === h.account_id);
+    if (!acct || !investmentTypes.includes(acct.type)) return;
+    accountValues[h.account_id] = (accountValues[h.account_id] || 0) +
+      parseFloat(h.shares || 0) * parseFloat(h.current_price || 0);
+  });
+
+  const rows = Object.entries(accountValues).map(([account_id, balance]) => ({
+    user_id: uid, account_id, snapshot_date: todayStr, balance
+  }));
+  if (!rows.length) return;
+
+  try {
+    await sb.query('net_worth_snapshots?on_conflict=snapshot_date,account_id', {
+      method: 'POST',
+      prefer: 'return=minimal,resolution=merge-duplicates',
+      body: JSON.stringify(rows),
+      headers: { 'Prefer': 'return=minimal,resolution=merge-duplicates' }
+    });
+    const snaps = await sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=500`);
+    if (snaps) state.snapshots = snaps;
+  } catch(e) {
+    console.warn('saveInvestmentSnapshots:', e.message);
   }
 }
 
