@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.25.6</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.25.7</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -2741,6 +2741,10 @@
       <button class="modal-close" onclick="closeModal('modal-change-password')">✕</button>
     </div>
     <div id="change-pw-error" style="display:none;padding:10px 14px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);border-radius:8px;font-size:12px;color:var(--red);margin-bottom:16px"></div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Current Password</label>
+      <input type="password" id="change-pw-current" placeholder="••••••••">
+    </div>
     <div class="form-group" style="margin-bottom:16px">
       <label>New Password</label>
       <input type="password" id="change-pw-new" placeholder="••••••••">
@@ -9390,6 +9394,7 @@ async function doSetNewPassword() {
 }
 
 function openChangePasswordModal() {
+  document.getElementById('change-pw-current').value = '';
   document.getElementById('change-pw-new').value = '';
   document.getElementById('change-pw-confirm').value = '';
   document.getElementById('change-pw-error').style.display = 'none';
@@ -9397,21 +9402,29 @@ function openChangePasswordModal() {
 }
 
 async function doChangePassword() {
+  const current = document.getElementById('change-pw-current').value;
   const pass    = document.getElementById('change-pw-new').value;
   const confirm = document.getElementById('change-pw-confirm').value;
   const errEl   = document.getElementById('change-pw-error');
   const btn     = document.getElementById('change-pw-btn');
   errEl.style.display = 'none';
+  if (!current) { errEl.textContent = 'Please enter your current password.'; errEl.style.display = 'block'; return; }
   if (!pass) { errEl.textContent = 'Please enter a new password.'; errEl.style.display = 'block'; return; }
   if (pass !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
   if (pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
   btn.textContent = 'Saving…'; btn.disabled = true;
   try {
+    const session = JSON.parse(localStorage.getItem('bnab_session') || '{}');
+    const email = session.email;
+    if (!email) throw new Error('Session email not found — please sign out and back in.');
+    await sbAuth('token?grant_type=password', { email, password: current });
     await sbAuthPut('user', { password: pass }, authToken);
     closeModal('modal-change-password');
     toast('Password updated successfully.');
   } catch(e) {
-    errEl.textContent = e.message;
+    const msg = e.message.includes('Invalid login') || e.message.includes('invalid')
+      ? 'Current password is incorrect.' : e.message;
+    errEl.textContent = msg;
     errEl.style.display = 'block';
   } finally {
     btn.textContent = 'Update Password'; btn.disabled = false;
