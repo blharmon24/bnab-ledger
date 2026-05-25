@@ -944,24 +944,67 @@
 
     <!-- Card -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px">
-      <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:6px">Sign in</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:24px">Enter your credentials to access your ledger</div>
 
-      <div id="login-error" style="display:none;padding:10px 14px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);border-radius:8px;font-size:12px;color:var(--red);margin-bottom:16px"></div>
-
-      <div class="form-group" style="margin-bottom:16px">
-        <label>Email</label>
-        <input type="email" id="login-email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doLogin()">
+      <!-- Panel: Sign in -->
+      <div id="login-panel-signin">
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:6px">Sign in</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:24px">Enter your credentials to access your ledger</div>
+        <div id="login-error" style="display:none;padding:10px 14px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);border-radius:8px;font-size:12px;color:var(--red);margin-bottom:16px"></div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <div class="form-group" style="margin-bottom:24px">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+        </div>
+        <button onclick="doLogin()" id="login-btn"
+          style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:8px;font-family:var(--font-mono);font-size:13px;cursor:pointer;transition:background 0.15s;font-weight:500">
+          Sign In
+        </button>
+        <div style="text-align:center;margin-top:16px">
+          <a href="#" onclick="showLoginPanel('forgot');return false;" style="font-size:12px;color:var(--accent)">Forgot password?</a>
+        </div>
       </div>
-      <div class="form-group" style="margin-bottom:24px">
-        <label>Password</label>
-        <input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+
+      <!-- Panel: Forgot password -->
+      <div id="login-panel-forgot" style="display:none">
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:6px">Reset password</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:24px">Enter your email and we'll send a reset link.</div>
+        <div id="forgot-error" style="display:none;padding:10px 14px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);border-radius:8px;font-size:12px;color:var(--red);margin-bottom:16px"></div>
+        <div id="forgot-success" style="display:none;padding:10px 14px;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);border-radius:8px;font-size:12px;color:#4ade80;margin-bottom:16px"></div>
+        <div class="form-group" style="margin-bottom:24px">
+          <label>Email</label>
+          <input type="email" id="forgot-email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doForgotPassword()">
+        </div>
+        <button onclick="doForgotPassword()" id="forgot-btn"
+          style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:8px;font-family:var(--font-mono);font-size:13px;cursor:pointer;transition:background 0.15s;font-weight:500">
+          Send Reset Link
+        </button>
+        <div style="text-align:center;margin-top:16px">
+          <a href="#" onclick="showLoginPanel('signin');return false;" style="font-size:12px;color:var(--muted)">← Back to sign in</a>
+        </div>
       </div>
 
-      <button onclick="doLogin()" id="login-btn"
-        style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:8px;font-family:var(--font-mono);font-size:13px;cursor:pointer;transition:background 0.15s;font-weight:500">
-        Sign In
-      </button>
+      <!-- Panel: Set new password (after clicking reset link in email) -->
+      <div id="login-panel-reset" style="display:none">
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-bottom:6px">Set new password</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:24px">Choose a new password for your account.</div>
+        <div id="reset-error" style="display:none;padding:10px 14px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);border-radius:8px;font-size:12px;color:var(--red);margin-bottom:16px"></div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label>New Password</label>
+          <input type="password" id="reset-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doSetNewPassword()">
+        </div>
+        <div class="form-group" style="margin-bottom:24px">
+          <label>Confirm Password</label>
+          <input type="password" id="reset-confirm" placeholder="••••••••" onkeydown="if(event.key==='Enter')doSetNewPassword()">
+        </div>
+        <button onclick="doSetNewPassword()" id="reset-btn"
+          style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:8px;font-family:var(--font-mono);font-size:13px;cursor:pointer;transition:background 0.15s;font-weight:500">
+          Set Password
+        </button>
+      </div>
+
     </div>
 
     <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--muted)">
@@ -1037,8 +1080,9 @@
       <div id="sidebar-user-email" style="font-size:10px;color:var(--muted);text-align:center;letter-spacing:0.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
+      <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.25.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.25.4</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -2689,6 +2733,29 @@
   </div>
 </div>
 
+<!-- Change Password Modal -->
+<div class="modal-overlay" id="modal-change-password" onclick="if(event.target===this)closeModal('modal-change-password')">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <div class="modal-title">Change Password</div>
+      <button class="modal-close" onclick="closeModal('modal-change-password')">✕</button>
+    </div>
+    <div id="change-pw-error" style="display:none;padding:10px 14px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);border-radius:8px;font-size:12px;color:var(--red);margin-bottom:16px"></div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>New Password</label>
+      <input type="password" id="change-pw-new" placeholder="••••••••">
+    </div>
+    <div class="form-group" style="margin-bottom:24px">
+      <label>Confirm New Password</label>
+      <input type="password" id="change-pw-confirm" placeholder="••••••••">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-change-password')">Cancel</button>
+      <button class="btn btn-primary" id="change-pw-btn" onclick="doChangePassword()">Update Password</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -2746,6 +2813,18 @@ async function sbAuth(endpoint, body) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error_description || data.msg || data.message || 'Auth failed');
+  return data;
+}
+
+async function sbAuthPut(endpoint, body, token) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/${endpoint}`, {
+    method: 'PUT',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.headers.get('content-type')?.includes('application/json')) return {};
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.msg || data.message || 'Failed');
   return data;
 }
 
@@ -9243,6 +9322,101 @@ async function doLogin() {
   }
 }
 
+let _recoveryToken = null;
+
+function showLoginPanel(name) {
+  ['signin', 'forgot', 'reset'].forEach(p => {
+    document.getElementById('login-panel-' + p).style.display = p === name ? 'block' : 'none';
+  });
+  if (name === 'forgot') {
+    const email = document.getElementById('login-email').value;
+    if (email) document.getElementById('forgot-email').value = email;
+    document.getElementById('forgot-error').style.display = 'none';
+    document.getElementById('forgot-success').style.display = 'none';
+    document.getElementById('forgot-btn').style.display = '';
+  }
+}
+
+async function doForgotPassword() {
+  const email = document.getElementById('forgot-email').value.trim();
+  const errEl = document.getElementById('forgot-error');
+  const sucEl = document.getElementById('forgot-success');
+  const btn   = document.getElementById('forgot-btn');
+  errEl.style.display = 'none';
+  sucEl.style.display = 'none';
+  if (!email) { errEl.textContent = 'Please enter your email.'; errEl.style.display = 'block'; return; }
+  btn.textContent = 'Sending…'; btn.disabled = true;
+  try {
+    await sbAuth('recover', { email });
+    sucEl.textContent = 'Check your email for a password reset link.';
+    sucEl.style.display = 'block';
+    btn.style.display = 'none';
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.textContent = 'Send Reset Link'; btn.disabled = false;
+  }
+}
+
+function showSetPasswordScreen(token) {
+  _recoveryToken = token;
+  showLoginScreen();
+  showLoginPanel('reset');
+}
+
+async function doSetNewPassword() {
+  const pass    = document.getElementById('reset-password').value;
+  const confirm = document.getElementById('reset-confirm').value;
+  const errEl   = document.getElementById('reset-error');
+  const btn     = document.getElementById('reset-btn');
+  errEl.style.display = 'none';
+  if (!pass) { errEl.textContent = 'Please enter a new password.'; errEl.style.display = 'block'; return; }
+  if (pass !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
+  if (pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  try {
+    await sbAuthPut('user', { password: pass }, _recoveryToken);
+    _recoveryToken = null;
+    toast('Password updated — please sign in.');
+    showLoginPanel('signin');
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.textContent = 'Set Password'; btn.disabled = false;
+  }
+}
+
+function openChangePasswordModal() {
+  document.getElementById('change-pw-new').value = '';
+  document.getElementById('change-pw-confirm').value = '';
+  document.getElementById('change-pw-error').style.display = 'none';
+  openModal('modal-change-password');
+}
+
+async function doChangePassword() {
+  const pass    = document.getElementById('change-pw-new').value;
+  const confirm = document.getElementById('change-pw-confirm').value;
+  const errEl   = document.getElementById('change-pw-error');
+  const btn     = document.getElementById('change-pw-btn');
+  errEl.style.display = 'none';
+  if (!pass) { errEl.textContent = 'Please enter a new password.'; errEl.style.display = 'block'; return; }
+  if (pass !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
+  if (pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  try {
+    await sbAuthPut('user', { password: pass }, authToken);
+    closeModal('modal-change-password');
+    toast('Password updated successfully.');
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.textContent = 'Update Password'; btn.disabled = false;
+  }
+}
+
 // ============================================================
 // THEME TOGGLE
 // ============================================================
@@ -9692,6 +9866,18 @@ function buildGoalProgressChart(goal) {
 // BOOT
 // ============================================================
 (async () => {
+  // Check for password recovery link (Supabase emails land with #access_token=...&type=recovery)
+  const hash = window.location.hash;
+  if (hash.includes('type=recovery')) {
+    const params = new URLSearchParams(hash.slice(1));
+    const token = params.get('access_token');
+    if (token) {
+      history.replaceState(null, '', window.location.pathname);
+      showSetPasswordScreen(token);
+      return;
+    }
+  }
+
   // Show login immediately
   showLoginScreen();
 
