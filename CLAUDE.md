@@ -182,3 +182,12 @@ _Cross-computer context. Update this section at the end of each session with wha
 - **Today column sort** (v2026.04.24.3): Today column in Holdings table is now sortable; sorts by total day-change `(current_price - price_open) × shares`.
 - **Version bump discipline**: User confirmed version must be bumped with every commit (`v{year}.{month}.{day}.{sequence}` format).
 - **Next / in progress:** Nightly cron job for scheduled-sync still TODO
+
+### 2026-05-25 (home PC)
+- **Goals progress chart** (v2026.05.25.3): 90-day running balance chart added to each goal card; uses goal color for line, dashed green target line; `charts['goal_*']` keys cleaned up on re-render
+- **Password management** (v2026.05.25.4–.7): Forgot password flow on login screen; set-new-password panel triggered by recovery token in URL hash (`type=recovery`); Change Password modal in sidebar footer requiring current password verification; `sbAuthPut` helper for PUT /auth/v1/user; `redirect_to` passed as query param (not body) on `/auth/v1/recover`
+- **GitHub Pages hosting**: app live at https://blharmon24.github.io/bnab-ledger/; Supabase Site URL and Redirect URLs configured to match
+- **Gmail SMTP**: configured in Supabase Authentication → Emails to bypass free-tier email rate limits
+- **RLS enabled**: Row Level Security re-enabled on all 8 tables with `auth.uid() = user_id` policies; app works correctly. New tables going forward: use ENABLE RLS + CREATE POLICY, not DISABLE RLS
+- **Multi-user onboarding flow**: create user in Supabase dashboard → share GitHub Pages URL → user self-serves password reset
+- **Next / in progress:** Nightly cron job for scheduled-sync still TODO
