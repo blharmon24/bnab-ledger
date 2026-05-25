@@ -986,6 +986,10 @@
       <div class="nav-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
       Net Worth
     </a>
+        <a class="nav-item" href="#goals" data-page="goals" onclick="showPage('goals');closeMobileMenu();return false;">
+      <div class="nav-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+      Goals
+    </a>
         <a class="nav-item" href="#spending" data-page="spending" onclick="showPage('spending');closeMobileMenu();return false;">
       <div class="nav-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div>
       Spending
@@ -1034,7 +1038,7 @@
       <button class="btn btn-ghost" id="theme-toggle-btn" style="width:100%;font-size:11px;padding:8px" onclick="toggleTheme()">☀ Light Mode</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.15.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.25.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1116,6 +1120,20 @@
         </div>
         <div id="dashboard-budgets">
           <div class="loading">Loading budgets...</div>
+        </div>
+      </div>
+
+      <!-- Savings Goals -->
+      <div class="card" id="dashboard-goals-card">
+        <div class="card-header">
+          <div class="card-title">Savings Goals</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="showPage('goals')">View all →</button>
+            <button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="openNewGoalModal()">+ New Goal</button>
+          </div>
+        </div>
+        <div id="dashboard-goals-body" style="padding:4px 0">
+          <div class="loading">Loading goals...</div>
         </div>
       </div>
 
@@ -2035,6 +2053,18 @@
       </div>
     </div>
 
+    <!-- SAVINGS GOALS -->
+    <div class="page" id="page-goals">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Goals</div>
+          <div class="page-subtitle">track progress toward savings targets</div>
+        </div>
+        <button class="btn btn-primary" onclick="openNewGoalModal()">+ New Goal</button>
+      </div>
+      <div id="goals-grid" class="stat-grid"></div>
+    </div>
+
   </main>
 </div>
 
@@ -2621,6 +2651,44 @@
   </div>
 </div>
 
+<!-- Savings Goal Modal -->
+<div class="modal-overlay" id="modal-goal" onclick="if(event.target===this)closeModal('modal-goal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="goal-modal-title">New Goal</div>
+      <button class="modal-close" onclick="closeModal('modal-goal')">✕</button>
+    </div>
+    <input type="hidden" id="goal-editing-id">
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Goal Name</label>
+        <input type="text" id="goal-name" placeholder="e.g. Emergency Fund">
+      </div>
+      <div class="form-group">
+        <label>Target Amount ($)</label>
+        <input type="number" id="goal-target" placeholder="10000" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label>Target Date <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <input type="date" id="goal-date">
+      </div>
+      <div class="form-group full">
+        <label>Track these accounts</label>
+        <div id="goal-account-checkboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+      </div>
+      <div class="form-group full">
+        <label>Color</label>
+        <div id="goal-color-swatches" style="margin-top:4px"></div>
+        <input type="hidden" id="goal-color" value="#6366f1">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-goal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveGoal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -2832,7 +2900,7 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 });
 
 const VALID_PAGES = ['dashboard','networth','spending','transactions','accounts',
-  'investments','import','rules','categories','payees','recurring','reports'];
+  'investments','import','rules','categories','payees','recurring','reports','goals'];
 
 function showPage(page, updateHash = true) {
   if (!VALID_PAGES.includes(page)) page = 'dashboard';
@@ -2861,6 +2929,7 @@ function showPage(page, updateHash = true) {
   if (page === 'payees')       loadPayeesPage();
   if (page === 'recurring')    loadRecurringPage();
   if (page === 'reports')      loadReportsPage();
+  if (page === 'goals')        loadGoalsPage();
 
   // Re-create Lucide icons in case new content was rendered
   if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -2956,12 +3025,13 @@ async function init() {
   const uid = getCurrentUserId();
 
   try {
-    const [accounts, categories, transactions, snapshots, holdings] = await Promise.all([
+    const [accounts, categories, transactions, snapshots, holdings, goals] = await Promise.all([
       sb.get('accounts', `user_id=eq.${uid}&is_active=eq.true&order=name`),
       sb.get('categories', `user_id=eq.${uid}&order=group_name,name`),
       fetchAllTransactions(),
       sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=500`).catch(() => []),
-      sb.get('portfolio_holdings', `user_id=eq.${uid}&order=ticker`).catch(() => [])
+      sb.get('portfolio_holdings', `user_id=eq.${uid}&order=ticker`).catch(() => []),
+      sb.get('savings_goals', `user_id=eq.${uid}&order=sort_order.asc,created_at.asc`).catch(() => [])
     ]);
 
     state.accounts        = accounts     || [];
@@ -2970,6 +3040,7 @@ async function init() {
     state.transactions    = transactions || [];
     state.snapshots       = snapshots    || [];
     state.holdings        = holdings     || [];
+    state.goals           = goals        || [];
 	    // Global category map used by isDebtPayment()
     window.catMapGlobal = Object.fromEntries((state.categories || []).map(c => [c.id, c]));
 
@@ -3290,6 +3361,7 @@ function loadDashboard() {
   buildBarChart();
   buildSparkline();
   renderDashboardBudgets(monthTxns);
+  renderGoalsDashboardCard();
 }
 
 function calcNetWorthFromTxns() {
@@ -9272,6 +9344,241 @@ async function tryRestoreSession() {
 }
 
 // USER SETTINGS — defined near top of script (search above)
+
+// ============================================================
+// SAVINGS GOALS
+// ============================================================
+
+function getGoalCurrentAmount(goal) {
+  const accountIds = new Set(goal.account_ids || []);
+  const balances = {};
+  accountIds.forEach(id => { balances[id] = 0; });
+  state.allTransactions.forEach(t => {
+    if (accountIds.has(t.account_id)) balances[t.account_id] += parseFloat(t.amount);
+  });
+  return Object.values(balances).reduce((s, v) => s + v, 0);
+}
+
+function buildGoalColorSwatches(selectedColor) {
+  const container = document.getElementById('goal-color-swatches');
+  if (!container) return;
+  container.innerHTML = Object.entries(COLOR_PALETTE).map(([groupName, shades]) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <span style="font-size:10px;color:var(--muted);width:44px;text-align:right;flex-shrink:0">${groupName}</span>
+      ${shades.map(c => `
+        <div onclick="applyGoalSwatchColor('${c}')"
+             title="${c}"
+             style="width:24px;height:24px;border-radius:5px;background:${c};cursor:pointer;
+                    border:2px solid ${c === selectedColor ? 'white' : 'transparent'};
+                    transition:transform 0.1s;box-shadow:${c === selectedColor ? '0 0 0 1px var(--accent)' : 'none'}"
+             onmouseover="this.style.transform='scale(1.15)'"
+             onmouseout="this.style.transform='scale(1)'">
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+function applyGoalSwatchColor(color) {
+  document.getElementById('goal-color').value = color;
+  buildGoalColorSwatches(color);
+}
+
+function buildGoalAccountCheckboxes(selectedIds) {
+  const container = document.getElementById('goal-account-checkboxes');
+  if (!container) return;
+  const assetTypes = typeAssets();
+  const assetAccounts = state.accounts.filter(a => assetTypes.includes(a.type));
+  if (!assetAccounts.length) {
+    container.innerHTML = '<span style="font-size:13px;color:var(--muted)">No accounts found.</span>';
+    return;
+  }
+  container.innerHTML = assetAccounts.map(a => {
+    const checked = selectedIds && selectedIds.includes(a.id) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 10px;border:1px solid var(--border);border-radius:8px;user-select:none">
+      <input type="checkbox" value="${a.id}" ${checked} style="accent-color:var(--accent)">
+      ${escHtml(a.name)}
+    </label>`;
+  }).join('');
+}
+
+function getGoalCheckedAccountIds() {
+  return Array.from(document.querySelectorAll('#goal-account-checkboxes input[type=checkbox]:checked')).map(el => el.value);
+}
+
+function openNewGoalModal() {
+  document.getElementById('goal-modal-title').textContent = 'New Goal';
+  document.getElementById('goal-editing-id').value = '';
+  document.getElementById('goal-name').value = '';
+  document.getElementById('goal-target').value = '';
+  document.getElementById('goal-date').value = '';
+  document.getElementById('goal-color').value = '#6366f1';
+  buildGoalAccountCheckboxes([]);
+  buildGoalColorSwatches('#6366f1');
+  openModal('modal-goal');
+}
+
+function openEditGoalModal(id) {
+  const goal = state.goals.find(g => g.id === id);
+  if (!goal) return;
+  document.getElementById('goal-modal-title').textContent = 'Edit Goal';
+  document.getElementById('goal-editing-id').value = goal.id;
+  document.getElementById('goal-name').value = goal.name;
+  document.getElementById('goal-target').value = goal.target_amount;
+  document.getElementById('goal-date').value = goal.target_date || '';
+  document.getElementById('goal-color').value = goal.color || '#6366f1';
+  buildGoalAccountCheckboxes(goal.account_ids || []);
+  buildGoalColorSwatches(goal.color || '#6366f1');
+  openModal('modal-goal');
+}
+
+async function saveGoal() {
+  const uid = getCurrentUserId();
+  const editingId = document.getElementById('goal-editing-id').value;
+  const name = document.getElementById('goal-name').value.trim();
+  const target = parseFloat(document.getElementById('goal-target').value);
+  const dateVal = document.getElementById('goal-date').value;
+  const color = document.getElementById('goal-color').value || '#6366f1';
+  const accountIds = getGoalCheckedAccountIds();
+
+  if (!name) { toast('Goal name required', 'error'); return; }
+  if (!target || target <= 0) { toast('Target amount required', 'error'); return; }
+
+  const payload = {
+    user_id: uid,
+    name,
+    target_amount: target,
+    target_date: dateVal || null,
+    account_ids: accountIds,
+    color
+  };
+
+  try {
+    if (editingId) {
+      await sb.patch('savings_goals', `id=eq.${editingId}&user_id=eq.${uid}`,
+        { name, target_amount: target, target_date: dateVal || null, account_ids: accountIds, color });
+    } else {
+      await sb.post('savings_goals', payload);
+    }
+    state.goals = await sb.get('savings_goals', `user_id=eq.${uid}&order=sort_order.asc,created_at.asc`) || [];
+    closeModal('modal-goal');
+    renderGoalsPage();
+    renderGoalsDashboardCard();
+    toast(editingId ? 'Goal updated' : 'Goal created');
+  } catch(e) {
+    toast('Error saving goal: ' + e.message, 'error');
+  }
+}
+
+async function deleteGoal(id) {
+  if (!confirm('Delete this goal?')) return;
+  const uid = getCurrentUserId();
+  try {
+    await sb.delete('savings_goals', `id=eq.${id}&user_id=eq.${uid}`);
+    state.goals = state.goals.filter(g => g.id !== id);
+    renderGoalsPage();
+    renderGoalsDashboardCard();
+    toast('Goal deleted');
+  } catch(e) {
+    toast('Error deleting goal: ' + e.message, 'error');
+  }
+}
+
+function fmtGoalDate(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function goalDaysRemaining(dateStr) {
+  if (!dateStr) return null;
+  const target = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+}
+
+function renderGoalCard(goal) {
+  const current = getGoalCurrentAmount(goal);
+  const target = parseFloat(goal.target_amount);
+  const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+  const reached = current >= target;
+  const barColor = reached ? '#22c55e' : (goal.color || '#6366f1');
+  const accMap = Object.fromEntries(state.accounts.map(a => [a.id, a.name]));
+  const linkedNames = (goal.account_ids || []).map(id => escHtml(accMap[id] || id)).join(', ') || '<span style="color:var(--muted)">No accounts linked</span>';
+  const days = goalDaysRemaining(goal.target_date);
+  const dateLabel = goal.target_date
+    ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Target: ${fmtGoalDate(goal.target_date)}${days !== null ? ` (${days > 0 ? days + ' days' : days === 0 ? 'today!' : 'overdue'})` : ''}</div>`
+    : '';
+  return `<div class="card" style="position:relative">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
+      <div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">${escHtml(goal.name)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${linkedNames}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="openEditGoalModal('${goal.id}')">Edit</button>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;color:var(--red)" onclick="deleteGoal('${goal.id}')">Delete</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+      <div style="font-size:22px;font-weight:700;color:${reached ? '#22c55e' : 'var(--text)'}">
+        ${fmt(current)}<span style="font-size:13px;font-weight:400;color:var(--muted)"> / ${fmt(target)}</span>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:${reached ? '#22c55e' : 'var(--muted)'}">${pct.toFixed(1)}%</div>
+    </div>
+    <div class="progress-bar" style="height:8px">
+      <div class="progress-fill" style="width:${pct.toFixed(1)}%;background:${barColor}"></div>
+    </div>
+    ${reached ? '<div style="font-size:12px;color:#22c55e;margin-top:6px;font-weight:600">Goal reached!</div>' : dateLabel}
+  </div>`;
+}
+
+function loadGoalsPage() {
+  renderGoalsPage();
+}
+
+function renderGoalsPage() {
+  const grid = document.getElementById('goals-grid');
+  if (!grid) return;
+  if (!state.goals || !state.goals.length) {
+    grid.innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">🎯</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:6px">No goals yet</div>
+      <div style="font-size:13px">Create a savings goal to track your progress toward a financial target.</div>
+      <button class="btn btn-primary" style="margin-top:16px" onclick="openNewGoalModal()">+ New Goal</button>
+    </div>`;
+    return;
+  }
+  grid.innerHTML = state.goals.map(g => renderGoalCard(g)).join('');
+}
+
+function renderGoalsDashboardCard() {
+  const body = document.getElementById('dashboard-goals-body');
+  if (!body) return;
+  if (!state.goals || !state.goals.length) {
+    body.innerHTML = `<div style="padding:16px 0;text-align:center;font-size:13px;color:var(--muted)">No goals yet — <a href="#" onclick="openNewGoalModal();return false;" style="color:var(--accent)">create one</a></div>`;
+    return;
+  }
+  body.innerHTML = state.goals.map(goal => {
+    const current = getGoalCurrentAmount(goal);
+    const target = parseFloat(goal.target_amount);
+    const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+    const reached = current >= target;
+    const barColor = reached ? '#22c55e' : (goal.color || '#6366f1');
+    const days = goalDaysRemaining(goal.target_date);
+    const dateLabel = goal.target_date
+      ? `<span style="color:var(--muted);font-size:11px;margin-left:8px">· ${fmtGoalDate(goal.target_date)}${days !== null ? (days > 0 ? ` (${days}d)` : days === 0 ? ' (today!)' : ' (overdue)') : ''}</span>`
+      : '';
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+        <span style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(goal.name)}${dateLabel}</span>
+        <span style="font-size:12px;color:${reached ? '#22c55e' : 'var(--muted)'}${reached ? ';font-weight:600' : ''}">${pct.toFixed(0)}% · ${fmt(current)} / ${fmt(target)}</span>
+      </div>
+      <div class="progress-bar" style="height:6px">
+        <div class="progress-fill" style="width:${pct.toFixed(1)}%;background:${barColor}"></div>
+      </div>
+    </div>`;
+  }).join('') + `<div style="padding:8px 0 4px;text-align:right"><a href="#" onclick="showPage('goals');return false;" style="font-size:11px;color:var(--accent)">View all goals →</a></div>`;
+}
 
 // ============================================================
 // BOOT
