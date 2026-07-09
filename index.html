@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.8</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.9</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -8705,25 +8705,35 @@ async function saveSplit() {
   }
 
   try {
-    // Delete original transaction
-    await sb.delete('transactions', `id=eq.${splitTxn.id}`);
-    state.allTransactions = state.allTransactions.filter(t => t.id !== splitTxn.id);
+    // Preserve the original amount's sign so expenses AND transfer_out (both
+    // negative) stay negative, income/transfer_in stay positive.
+    const sign = parseFloat(splitTxn.amount) < 0 ? -1 : 1;
 
-    // Create split transactions
-    for (const split of splits) {
-      const amt    = splitTxn.type === 'expense' ? -Math.abs(split.amount) : Math.abs(split.amount);
-      const [saved] = await sb.post('transactions', withUserId({
-        date:        splitTxn.date,
-        payee:       splitTxn.payee,
-        type:        splitTxn.type,
-        amount:      parseFloat(amt.toFixed(2)),
-        account_id:  splitTxn.account_id,
-        category_id: split.category_id,
-        memo:        splitTxn.memo,
-        import_id:   null
-      }));
-      state.allTransactions.unshift(saved);
-    }
+    // Carry the original's import_id onto the FIRST split only, so CSV/QFX
+    // dedup still recognizes this transaction on re-import (without inflating
+    // occurrence counts). The rest get null.
+    const payloads = splits.map((split, i) => withUserId({
+      date:        splitTxn.date,
+      payee:       splitTxn.payee,
+      type:        splitTxn.type,
+      amount:      parseFloat((sign * Math.abs(split.amount)).toFixed(2)),
+      account_id:  splitTxn.account_id,
+      category_id: split.category_id,
+      memo:        splitTxn.memo,
+      cleared:     splitTxn.cleared,
+      import_id:   i === 0 ? (splitTxn.import_id || null) : null
+    }));
+
+    // Insert all splits in ONE atomic request first. Only after they're safely
+    // persisted do we delete the original — so a failed insert can never
+    // destroy the original before its replacements exist.
+    const saved     = await sb.post('transactions', payloads);
+    const savedRows = Array.isArray(saved) ? saved : [saved];
+
+    await sb.delete('transactions', `id=eq.${splitTxn.id}`);
+
+    state.allTransactions = state.allTransactions.filter(t => t.id !== splitTxn.id);
+    savedRows.forEach(r => state.allTransactions.unshift(r));
 
     // Sort by date desc
     state.allTransactions.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
