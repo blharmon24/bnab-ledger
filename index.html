@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.5</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.6</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -6314,7 +6314,7 @@ async function saveSnapshot() {
 
   const rows = state.accounts.map(a => {
     const val = parseFloat(document.getElementById(`snap-bal-${a.id}`)?.value || 0);
-    return { snapshot_date: date, account_id: a.id, balance: val };
+    return withUserId({ snapshot_date: date, account_id: a.id, balance: val });
   });
 
   try {
