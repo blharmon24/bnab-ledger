@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.6</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.7</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -6082,15 +6082,28 @@ async function runCSVImport() {
 
   log.innerHTML = 'Checking for duplicates…';
 
-  // Load existing fingerprints for dedup
-  let existingFingerprints = new Set();
+  // Load existing import_ids and count how many transactions share each base
+  // fingerprint. Dedup is by COUNT (multiset): two genuinely identical same-day
+  // transactions both import, while re-importing an overlapping statement stays
+  // idempotent. Extra occurrences are stored as `${base}~dup~2`, `~dup~3`, ...;
+  // the first keeps the plain base fingerprint so previously imported rows still
+  // match. (`~dup~` is used instead of `#N` because real payees like
+  // "Walmart #1234" would collide with a bare number suffix.)
+  const stripOccurrence = (id) => id.replace(/~dup~\d+$/, '');
+  const dbBaseCounts = {};
   try {
     const existing = await sb.get(
       'transactions',
       `user_id=eq.${getCurrentUserId()}&account_id=eq.${accountId}&import_id=not.is.null&select=import_id`
     );
-    (existing || []).forEach(t => { if (t.import_id) existingFingerprints.add(t.import_id); });
+    (existing || []).forEach(t => {
+      if (!t.import_id) return;
+      const base = stripOccurrence(t.import_id);
+      dbBaseCounts[base] = (dbBaseCounts[base] || 0) + 1;
+    });
   } catch(e) { console.warn('Could not load existing imports'); }
+
+  const seenInFile = {}; // base fingerprint -> occurrences seen so far in this file
 
   const rules = loadRules();
   const toInsert = [];
@@ -6145,10 +6158,12 @@ async function runCSVImport() {
       category_id = matchedCatId && state.categories.find(c => c.id === matchedCatId) ? matchedCatId : null;
     }
 
-    // Deduplication fingerprint
-    const fingerprint = rowFingerprint(date, amount, rawPayee);
-    if (existingFingerprints.has(fingerprint)) { dupeCount++; continue; }
-    existingFingerprints.add(fingerprint); // prevent intra-batch dupes
+    // Deduplication by multiset count: the k-th occurrence of a base fingerprint
+    // in this file is a duplicate only if the DB already holds k rows for it.
+    const base = rowFingerprint(date, amount, rawPayee);
+    const k = (seenInFile[base] = (seenInFile[base] || 0) + 1);
+    if (k <= (dbBaseCounts[base] || 0)) { dupeCount++; continue; }
+    const importId = k === 1 ? base : `${base}~dup~${k}`;
 
     toInsert.push(withUserId({
       account_id:  accountId,
@@ -6158,7 +6173,7 @@ async function runCSVImport() {
       amount:      parseFloat(amount.toFixed(2)),
       type,
       category_id,
-      import_id:   fingerprint,
+      import_id:   importId,
       cleared:     true
     }));
   }
