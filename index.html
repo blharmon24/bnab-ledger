@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.05.25.7</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3407,10 +3407,7 @@ function loadDashboard() {
 
   const monthTxns = state.allTransactions.filter(t => t.date.startsWith(thisMonth));
   const catMap2 = Object.fromEntries(state.categories.map(c => [c.id, c]));
-  const income = monthTxns.filter(t => {
-  if (t.type !== 'income') return false;
-  return !isDebtPayment(t);
-}).reduce((s,t) => s + parseFloat(t.amount), 0);
+  const income = monthTxns.filter(isRealIncome).reduce((s,t) => s + parseFloat(t.amount), 0);
   const spending = monthTxns.filter(t => {
     if (t.type !== 'expense') return false;
     if (isDebtPayment(t)) return false;
@@ -3498,6 +3495,22 @@ function isDebtPayment(t) {
   const cat = catMap[t.category_id];
   if (cat && isCCPaymentCategory(cat.name)) return true;
   return false;
+}
+
+// A positive/income-typed transaction landing on a liability account
+// (credit card, loan, mortgage) is a payment or refund — never household
+// income. These slip past isDebtPayment when they arrive uncategorized
+// (e.g. the receiving side of a CC payment from bank sync).
+const LIABILITY_ACCOUNT_TYPES = new Set(['credit_card', 'loan', 'mortgage']);
+function isLiabilityInflow(t) {
+  if (!t || !t.account_id) return false;
+  const acct = (state.accounts || []).find(a => a.id === t.account_id);
+  return !!(acct && LIABILITY_ACCOUNT_TYPES.has(acct.type));
+}
+
+// True income: income-typed, not a debt/CC payment, not an inflow to a liability account.
+function isRealIncome(t) {
+  return t.type === 'income' && !isDebtPayment(t) && !isLiabilityInflow(t);
 }
 
 
@@ -3603,8 +3616,7 @@ function buildBarChart() {
 
 const incomes = months.map(m => state.allTransactions.filter(t => {
     if (!t.date.startsWith(m)) return false;
-    if (t.type !== 'income') return false;
-    return !isDebtPayment(t);
+    return isRealIncome(t);
   }).reduce((s,t) => s + parseFloat(t.amount), 0));
   const expenses = months.map(m => state.allTransactions.filter(t => t.date.startsWith(m) && realExpense(t)).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0));
 
@@ -3922,14 +3934,8 @@ function loadSpending() {
   monthTxns = monthTxns.filter(t => !isDebtPayment(t));
 
   const expenses = monthTxns.filter(t => t.type === 'expense');
-  const catMap2 = Object.fromEntries(state.categories.map(c => [c.id, c]));
 
-  const income = monthTxns.filter(t => {
-    if (t.type !== 'income') return false;
-    const cat = catMap2[t.category_id];
-    if (cat && isCCPaymentCategory(cat.name)) return false;
-    return true;
-  }).reduce((s,t) => s + parseFloat(t.amount), 0);
+  const income = monthTxns.filter(isRealIncome).reduce((s,t) => s + parseFloat(t.amount), 0);
 
   const totalSpent = expenses.reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
 
@@ -8087,7 +8093,7 @@ function loadCashFlow() {
 
   const rows = months.map(m => {
     const mTxns    = state.allTransactions.filter(t => t.date.startsWith(m));
-    const income   = mTxns.filter(t => t.type === 'income' && !isDebtPayment(t)).reduce((s,t) => s + parseFloat(t.amount), 0);
+    const income   = mTxns.filter(isRealIncome).reduce((s,t) => s + parseFloat(t.amount), 0);
     const expenses = realExpenses(mTxns).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
     const net      = income - expenses;
     return { month: m, label: monthLabel(m), income, expenses, net };
@@ -8139,7 +8145,7 @@ function exportCashFlowCSV() {
   const rows = [['Month', 'Income', 'Expenses', 'Net Cash Flow', 'Cumulative']];
   months.forEach(m => {
     const mTxns    = state.allTransactions.filter(t => t.date.startsWith(m));
-    const income   = mTxns.filter(t => t.type === 'income' && !isDebtPayment(t)).reduce((s,t) => s + parseFloat(t.amount), 0);
+    const income   = mTxns.filter(isRealIncome).reduce((s,t) => s + parseFloat(t.amount), 0);
     const expenses = realExpenses(mTxns).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
     const net      = income - expenses;
     cumulative    += net;
@@ -8165,7 +8171,7 @@ function loadSavingsRate() {
 
   const rows = months.map(m => {
     const mTxns    = state.allTransactions.filter(t => t.date.startsWith(m));
-    const income   = mTxns.filter(t => t.type === 'income' && !isDebtPayment(t)).reduce((s,t) => s + parseFloat(t.amount), 0);
+    const income   = mTxns.filter(isRealIncome).reduce((s,t) => s + parseFloat(t.amount), 0);
     const expenses = realExpenses(mTxns).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
     const saved    = income - expenses;
     const rate     = income > 0 ? (saved / income) * 100 : null;
