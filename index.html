@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.2</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.3</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3319,7 +3319,6 @@ function renderDashboardBudgets(monthTxns) {
   const labelEl = document.getElementById('budget-month-label');
   if (labelEl) labelEl.textContent = monthLabel;
 
-  const budgets  = loadBudgets();
   const catMap   = Object.fromEntries(state.categories.map(c => [c.id, c]));
 
   // Build spending per category for this month (no CC payments)
@@ -3334,13 +3333,13 @@ function renderDashboardBudgets(monthTxns) {
 
   // Filter to only categories with a budget set
   const budgetedCats = state.categories
-    .filter(c => budgets[c.id] > 0 && !c.is_income)
+    .filter(c => getBudget(c.id) > 0 && !c.is_income)
     .sort((a, b) => {
       // Sort by: over budget first, then by % used desc
       const aSpent = spent[a.id] || 0;
       const bSpent = spent[b.id] || 0;
-      const aPct = aSpent / budgets[a.id];
-      const bPct = bSpent / budgets[b.id];
+      const aPct = aSpent / getBudget(a.id);
+      const bPct = bSpent / getBudget(b.id);
       return bPct - aPct;
     });
 
@@ -3353,7 +3352,7 @@ function renderDashboardBudgets(monthTxns) {
   }
 
   el.innerHTML = budgetedCats.map(cat => {
-    const budget    = budgets[cat.id];
+    const budget    = getBudget(cat.id);
     const catSpent  = spent[cat.id] || 0;
     const pct       = Math.min((catSpent / budget) * 100, 100);
     const over      = catSpent > budget;
