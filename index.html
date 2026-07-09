@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.10</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.11</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -9961,7 +9961,14 @@ function buildGoalProgressChart(goal) {
 
   const months = _goalChartMonths[goal.id] || 3;
   const today = new Date(); today.setHours(0,0,0,0);
-  const start = new Date(today); start.setMonth(start.getMonth() - months);
+  let start = new Date(today); start.setMonth(start.getMonth() - months);
+  // Clamp the window to the first activity in the linked accounts. Charting the
+  // empty $0 stretch before the account was funded would drag the trend line
+  // upward (0 -> funded) and make a declining balance look like it's rising.
+  if (txns.length) {
+    const firstTxnDate = new Date(txns[0].date + 'T00:00:00');
+    if (firstTxnDate > start) start = firstTxnDate;
+  }
 
   // Sum all transactions before window as starting balance
   let balance = 0;
