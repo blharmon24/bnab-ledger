@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3636,7 +3636,14 @@ const incomes = months.map(m => state.allTransactions.filter(t => {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { labels: { color: theme.textColor, font: { family: 'DM Mono', size: 11 } } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtFull(ctx.raw)}` } }
+        tooltip: { callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${fmtFull(ctx.raw)}`,
+          footer: items => {
+            const i = items[0].dataIndex;
+            const net = incomes[i] - expenses[i];
+            return `Monthly Savings: ${net >= 0 ? '+' : '-'}${fmtFull(Math.abs(net))}`;
+          }
+        } }
       },
       scales: {
         x: { ticks: { color: theme.mutedColor, font: { family: 'DM Mono' } }, grid: { color: theme.gridColor } },
