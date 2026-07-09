@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.4</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -2770,7 +2770,7 @@
 let authToken = null;
 
 const sb = {
-  async query(path, opts = {}) {
+  async query(path, opts = {}, _retried = false) {
     const url = `${SUPABASE_URL}/rest/v1/${path}`;
     // Use JWT token when available, fall back to anon key
     const bearer = authToken || SUPABASE_KEY;
@@ -2785,8 +2785,15 @@ const sb = {
       }
     });
     if (!res.ok) {
+      // Access token likely expired mid-session — try one silent refresh + retry
+      // before booting the user to the login screen. (403 = RLS/permission, not
+      // fixable by refresh, so it falls through to the logout path below.)
+      if (res.status === 401 && !_retried && authToken) {
+        const refreshed = await refreshAuthSession();
+        if (refreshed) return sb.query(path, opts, true);
+      }
       const err = await res.json().catch(() => ({}));
-      // If unauthorized, send back to login
+      // If still unauthorized, send back to login
       if (res.status === 401 || res.status === 403) {
         authToken = null;
         localStorage.removeItem('bnab_session');
@@ -2836,6 +2843,51 @@ async function sbRefreshToken(refreshToken) {
   return sbAuth('token?grant_type=refresh_token', { refresh_token: refreshToken });
 }
 
+// ── Silent session refresh — used by sb.query on 401 and by the keep-alive timer ──
+// Deduped so concurrent 401s trigger only one refresh round-trip.
+let _refreshPromise = null;
+async function refreshAuthSession() {
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = (async () => {
+    const raw = localStorage.getItem('bnab_session');
+    if (!raw) return false;
+    let session;
+    try { session = JSON.parse(raw); } catch(e) { return false; }
+    if (!session.refresh_token) return false;
+    try {
+      const data = await sbRefreshToken(session.refresh_token);
+      if (!data || !data.access_token) return false;
+      authToken = data.access_token;
+      localStorage.setItem('bnab_session', JSON.stringify({
+        access_token:  data.access_token,
+        refresh_token: data.refresh_token || session.refresh_token,
+        expires_at:    Date.now() + (data.expires_in * 1000),
+        email:         session.email,
+        user_id:       session.user_id || state.userId || null
+      }));
+      return true;
+    } catch(e) {
+      return false;
+    }
+  })();
+  try { return await _refreshPromise; } finally { _refreshPromise = null; }
+}
+
+// ── Proactive keep-alive: refresh the access token shortly before it expires ──
+let _sessionTimer = null;
+function startSessionKeepAlive() {
+  if (_sessionTimer) clearInterval(_sessionTimer);
+  _sessionTimer = setInterval(async () => {
+    const raw = localStorage.getItem('bnab_session');
+    if (!raw) { clearInterval(_sessionTimer); _sessionTimer = null; return; }
+    let s;
+    try { s = JSON.parse(raw); } catch(e) { return; }
+    if (s.expires_at && Date.now() > s.expires_at - 5 * 60 * 1000) {
+      await refreshAuthSession();
+    }
+  }, 4 * 60 * 1000);
+}
+
 // ============================================================
 // STATE
 // ============================================================
@@ -2873,6 +2925,18 @@ function withUserId(obj) {
 // ============================================================
 const _settingsCache = {};
 
+// Warn the user (throttled) when a setting can't reach Supabase and only lands
+// in localStorage — otherwise cross-device drift happens silently.
+let _lastSettingWarn = 0;
+function notifySettingSaveFailed() {
+  const now = Date.now();
+  if (now - _lastSettingWarn < 10000) return; // throttle repeated failures
+  _lastSettingWarn = now;
+  if (typeof toast === 'function') {
+    toast('Couldn’t sync a setting to the cloud — saved on this device only. Check your connection.', 'error');
+  }
+}
+
 async function saveSetting(key, value) {
   const uid = getCurrentUserId();
   const strValue = typeof value === 'string' ? value : JSON.stringify(value);
@@ -2887,6 +2951,7 @@ async function saveSetting(key, value) {
   } catch(e) {
     localStorage.setItem(key, strValue);
     console.warn(`Setting "${key}" saved to localStorage (Supabase unavailable):`, e.message);
+    notifySettingSaveFailed();
   }
 }
 
@@ -3108,13 +3173,15 @@ async function init() {
   const uid = getCurrentUserId();
 
   try {
+    const loadErrors = [];
+    const softFail = (label) => (e) => { console.warn(`Load failed (${label}):`, e?.message); loadErrors.push(label); return []; };
     const [accounts, categories, transactions, snapshots, holdings, goals] = await Promise.all([
       sb.get('accounts', `user_id=eq.${uid}&is_active=eq.true&order=name`),
       sb.get('categories', `user_id=eq.${uid}&order=group_name,name`),
       fetchAllTransactions(),
-      sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=500`).catch(() => []),
-      sb.get('portfolio_holdings', `user_id=eq.${uid}&order=ticker`).catch(() => []),
-      sb.get('savings_goals', `user_id=eq.${uid}&order=sort_order.asc,created_at.asc`).catch(() => [])
+      sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=500`).catch(softFail('net worth history')),
+      sb.get('portfolio_holdings', `user_id=eq.${uid}&order=ticker`).catch(softFail('holdings')),
+      sb.get('savings_goals', `user_id=eq.${uid}&order=sort_order.asc,created_at.asc`).catch(softFail('savings goals'))
     ]);
 
     state.accounts        = accounts     || [];
@@ -3178,6 +3245,11 @@ async function init() {
 
     // Show any pending balance alerts from nightly sync
     checkPendingAlerts();
+
+    // Surface partial-load failures so users don't trust incomplete figures
+    if (loadErrors.length) {
+      toast(`Some data didn't load: ${loadErrors.join(', ')}. Figures may be incomplete — refresh to retry.`, 'error');
+    }
 
   } catch(e) {
     toast('Connection error: ' + e.message, 'error');
@@ -3351,15 +3423,45 @@ function renderDashboardBudgets(monthTxns) {
     return;
   }
 
-  el.innerHTML = budgetedCats.map(cat => {
+  // ── Summary totals across all budgeted categories ──
+  let totalBudget = 0, totalBudgetedSpent = 0;
+  budgetedCats.forEach(c => { totalBudget += getBudget(c.id); totalBudgetedSpent += (spent[c.id] || 0); });
+  const totalLeft = totalBudget - totalBudgetedSpent;
+  const daysLeft  = Math.max(0, daysInMonth - dayOfMonth);
+
+  // ── Unbudgeted spending: all non-CC expense this month minus what landed in budgeted categories ──
+  let totalExpense = 0;
+  monthTxns.forEach(t => {
+    if (t.type !== 'expense') return;
+    const cat = catMap[t.category_id];
+    if (cat && isCCPaymentCategory(cat.name)) return;
+    totalExpense += Math.abs(parseFloat(t.amount));
+  });
+  const unbudgetedSpent = Math.max(0, totalExpense - totalBudgetedSpent);
+
+  const cell = (label, value, color) => `
+    <div style="text-align:center;flex:1;min-width:70px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">${label}</div>
+      <div style="font-size:15px;font-weight:600;${color ? `color:${color}` : ''}">${value}</div>
+    </div>`;
+  const summaryHtml = `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin-bottom:16px;background:var(--surface2);border-radius:8px">
+      ${cell('Budgeted', fmt(totalBudget))}
+      ${cell('Spent', fmt(totalBudgetedSpent))}
+      ${cell(totalLeft >= 0 ? 'Left' : 'Over', fmt(Math.abs(totalLeft)), totalLeft >= 0 ? 'var(--green)' : 'var(--red)')}
+      ${cell('Days left', daysLeft)}
+    </div>`;
+
+  const barsHtml = budgetedCats.map(cat => {
     const budget    = getBudget(cat.id);
     const catSpent  = spent[cat.id] || 0;
     const pct       = Math.min((catSpent / budget) * 100, 100);
     const over      = catSpent > budget;
     const overAmt   = catSpent - budget;
     const remaining = budget - catSpent;
-    const pace      = budget * monthPct; // expected spend at this point in month
-    const onPace    = catSpent <= pace * 1.1; // within 10% of expected pace
+    // Projected end-of-month spend at the current pace
+    const projected  = monthPct > 0 ? catSpent / monthPct : catSpent;
+    const willExceed = !over && projected > budget * 1.05; // on track to blow the budget
 
     let barColor = cat.color || 'var(--accent)';
     let statusText = '';
@@ -3378,12 +3480,21 @@ function renderDashboardBudgets(monthTxns) {
       statusColor = 'var(--muted)';
     }
 
+    let note = '';
+    if (over) {
+      note = `<div style="font-size:10px;color:var(--red);margin-top:3px">⚠ Over budget</div>`;
+    } else if (pct >= 85) {
+      note = `<div style="font-size:10px;color:var(--yellow);margin-top:3px">⚠ Approaching limit</div>`;
+    } else if (willExceed) {
+      note = `<div style="font-size:10px;color:var(--yellow);margin-top:3px">🔥 Spending fast — on track for ~${fmt(projected)}</div>`;
+    }
+
     return `
       <div style="margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
           <div style="display:flex;align-items:center;gap:8px">
             <span class="color-dot" style="background:${cat.color || '#64748b'}"></span>
-            <span style="font-size:13px;color:var(--text)">${cat.name}</span>
+            <span style="font-size:13px;color:var(--text)">${escHtml(cat.name)}</span>
           </div>
           <div style="display:flex;gap:12px;align-items:baseline">
             <span style="font-size:12px;color:${statusColor}">${statusText}</span>
@@ -3394,10 +3505,17 @@ function renderDashboardBudgets(monthTxns) {
         <div class="progress-bar" style="height:8px;background:var(--surface2)">
           <div class="progress-fill" style="width:${pct.toFixed(1)}%;background:${barColor};transition:width 0.4s ease"></div>
         </div>
-        ${over ? `<div style="font-size:10px;color:var(--red);margin-top:3px">⚠ Over budget</div>` :
-          pct >= 85 ? `<div style="font-size:10px;color:var(--yellow);margin-top:3px">⚠ Approaching limit</div>` : ''}
+        ${note}
       </div>`;
   }).join('');
+
+  const unbudgetedHtml = unbudgetedSpent > 0 ? `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;margin-top:4px;border-top:1px dashed var(--border)">
+      <span style="font-size:12px;color:var(--muted)">Unbudgeted spending</span>
+      <span style="font-size:13px;color:var(--text);font-weight:500">${fmt(unbudgetedSpent)}</span>
+    </div>` : '';
+
+  el.innerHTML = summaryHtml + barsHtml + unbudgetedHtml;
 }
 
 function loadDashboard() {
@@ -6483,9 +6601,8 @@ async function saveHolding() {
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
-// ── Live Price Fetching via Yahoo Finance (no API key needed) ──
-// ── Price fetching via allorigins.win CORS proxy ─────────────
-// Works from file:// — proxy fetches Yahoo Finance server-side
+// ── Live price fetching via the `fetch-prices` Supabase Edge Function ──
+// Prices are fetched server-side (Yahoo Finance); no CORS proxy and no secret in the client.
 async function fetchTickerPrice(ticker) {
   // Call our Supabase Edge Function for a single ticker
   const fnUrl = `${SUPABASE_URL}/functions/v1/fetch-prices`;
@@ -9326,6 +9443,7 @@ async function doLogin() {
 
     hideLoginScreen();
     updateSidebarUser(data.user?.email || email);
+    startSessionKeepAlive();
     await init();
   } catch(e) {
     errEl.textContent = e.message.includes('Invalid login') || e.message.includes('invalid')
@@ -9911,6 +10029,7 @@ function buildGoalProgressChart(goal) {
   const restored = await tryRestoreSession();
   if (restored) {
     hideLoginScreen();
+    startSessionKeepAlive();
     await init();
   }
   // Otherwise just show the login screen and wait for user input
