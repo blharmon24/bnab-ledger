@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.11</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.12</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -9994,17 +9994,18 @@ function buildGoalProgressChart(goal) {
     data.push(parseFloat(balance.toFixed(2)));
   }
 
-  // Overall trend across the window (least-squares fit over the daily balances).
-  // Slope sign tells whether the balance is improving or declining regardless of
-  // day-to-day noise; the line is drawn green (up) or red (down).
+  // Net-change line: a straight line from the first balance in the window to the
+  // current balance. Green if you have more now than at the window's start (net
+  // progress toward the goal), red if less (net decline) — answering "am I up or
+  // down over this period?" regardless of any peak in the middle. (A least-squares
+  // fit was misleading here: a mid-window peak tilted it green even when the
+  // balance ended lower than it started.)
   const n = data.length;
-  let sx = 0, sy = 0, sxx = 0, sxy = 0;
-  for (let i = 0; i < n; i++) { sx += i; sy += data[i]; sxx += i * i; sxy += i * data[i]; }
-  const denom = n * sxx - sx * sx;
-  const slope = denom ? (n * sxy - sx * sy) / denom : 0;
-  const intercept = n ? (sy - slope * sx) / n : 0;
-  const trendData = data.map((_, i) => parseFloat((intercept + slope * i).toFixed(2)));
-  const trendColor = slope >= 0 ? '#22c55e' : '#ef4444';
+  const firstBal = n ? data[0] : 0;
+  const lastBal  = n ? data[n - 1] : 0;
+  const step     = n > 1 ? (lastBal - firstBal) / (n - 1) : 0;
+  const trendData = data.map((_, i) => parseFloat((firstBal + step * i).toFixed(2)));
+  const trendColor = lastBal >= firstBal ? '#22c55e' : '#ef4444';
 
   const target = parseFloat(goal.target_amount);
   const color = goal.color || '#6366f1';
