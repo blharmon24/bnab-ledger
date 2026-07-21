@@ -191,3 +191,10 @@ _Cross-computer context. Update this section at the end of each session with wha
 - **RLS enabled**: Row Level Security re-enabled on all 8 tables with `auth.uid() = user_id` policies; app works correctly. New tables going forward: use ENABLE RLS + CREATE POLICY, not DISABLE RLS
 - **Multi-user onboarding flow**: create user in Supabase dashboard → share GitHub Pages URL → user self-serves password reset
 - **Next / in progress:** Nightly cron job for scheduled-sync still TODO
+
+### 2026-07-21 (home PC)
+- **Stuck "loading..." on dashboard** (v2026.07.21.1): `#stat-income-sub` / `#stat-spending-sub` had `loading...` hardcoded in HTML but `loadDashboard()` only ever wrote to `#stat-networth-sub`, so the placeholder never cleared. Nothing was actually loading. Both now show a month-to-date comparison via new `setMtdSub()` helper.
+- **Spending donut unified with dashboard donut** (v2026.07.21.1): Spending page sliced to top 8 categories, dashboard to top 10 — categories visible on the dashboard silently vanished on the Spending page (user noticed Dining Out missing). Both now share `DONUT_MAX_SLICES = 10` and roll the tail into an explicit `Other (N)` wedge, so each donut sums to the total stat above it. Note: both donuts were *already* keyed on `cat.name`; only the "By Group" bars card rolls up to `group_name`.
+- **MTD comparison label made explicit** (v2026.07.21.2): `"vs last month"` read as the whole previous month and confused the user when a paycheck was still outstanding. Label now names the actual window (`+$810 vs Jun 1–21`), rebuilt each load from `now.getDate()`; previous-month end day clamped to that month's real length so Mar 31 reads `Feb 1–28`. Hover tooltip shows both underlying figures.
+- **Comparison semantics**: income/spending sub-labels compare *same day range* month-over-month (Jul 1–21 vs Jun 1–21), NOT partial-vs-full month. Intentional — do not "fix" it to compare against the full prior month.
+- **Next / in progress:** Nightly cron job for scheduled-sync still TODO; "By Group" bars card breakout undecided; `.gitignore` for `.vscode/` + `supabase/.temp/` not yet added
