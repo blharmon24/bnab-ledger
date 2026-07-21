@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.09.12</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.21.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3522,21 +3522,45 @@ function renderDashboardBudgets(monthTxns) {
   el.innerHTML = summaryHtml + barsHtml + unbudgetedHtml;
 }
 
+// Writes a "+$X vs last month" sub-line under a stat card, colored by whether
+// the change is a good one for that stat.
+function setMtdSub(id, diff, higherIsGood) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (Math.abs(diff) < 0.5) {
+    el.textContent = 'same as last month';
+    el.style.color = 'var(--muted)';
+    return;
+  }
+  el.textContent = `${diff >= 0 ? '+' : ''}${fmt(diff)} vs last month`;
+  el.style.color = (diff > 0) === higherIsGood ? 'var(--green)' : 'var(--red)';
+}
+
 function loadDashboard() {
   const now = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
   const monthTxns = state.allTransactions.filter(t => t.date.startsWith(thisMonth));
   const catMap2 = Object.fromEntries(state.categories.map(c => [c.id, c]));
-  const income = monthTxns.filter(isRealIncome).reduce((s,t) => s + parseFloat(t.amount), 0);
-  const spending = monthTxns.filter(t => {
+  const sumIncome = (txns) => txns.filter(isRealIncome).reduce((s,t) => s + parseFloat(t.amount), 0);
+  const sumSpending = (txns) => txns.filter(t => {
     if (t.type !== 'expense') return false;
     if (isDebtPayment(t)) return false;
     const cat = catMap2[t.category_id];
     if (cat && isCCPaymentCategory(cat.name)) return false;
     return true;
   }).reduce((s,t) => s + Math.abs(parseFloat(t.amount)), 0);
+  const income = sumIncome(monthTxns);
+  const spending = sumSpending(monthTxns);
   const savings = income - spending;
+
+  // Same day-range of last month, so a partial month isn't compared to a full one
+  const lastMonth = firstOfMonth(1).slice(0, 7);
+  const dayOfMonth = now.getDate();
+  const lastMonthMTD = state.allTransactions.filter(t =>
+    t.date.startsWith(lastMonth) && parseInt(t.date.slice(8, 10), 10) <= dayOfMonth);
+  const incomeDiff = income - sumIncome(lastMonthMTD);
+  const spendingDiff = spending - sumSpending(lastMonthMTD);
 
   // Net worth
   const netWorth = calcNetWorthAsOf(today());
@@ -3551,6 +3575,9 @@ function loadDashboard() {
 
   document.getElementById('stat-income').textContent = fmt(income);
   document.getElementById('stat-spending').textContent = fmt(spending);
+  // higherIsGood: more income is good, more spending is not
+  setMtdSub('stat-income-sub', incomeDiff, true);
+  setMtdSub('stat-spending-sub', spendingDiff, false);
   document.getElementById('stat-savings').textContent = fmt(savings);
   document.getElementById('stat-savings').className = 'stat-value ' + (savings >= 0 ? 'stat-positive' : 'stat-negative');
 
@@ -3598,6 +3625,10 @@ function renderRecentTransactions(txns) {
 
 // Categories that represent debt payments — excluded from spending charts to avoid double-counting
 const TRANSFER_CAT_KEYWORDS = ['credit card payment', 'cc payment', 'transfer', 'loan payment', 'debt payment'];
+
+// Max individual wedges on a spending donut before the tail is rolled into "Other".
+// Shared by the dashboard and Spending page donuts so both break out the same categories.
+const DONUT_MAX_SLICES = 10;
 
 function isCCPaymentCategory(catName) {
   if (!catName) return false;
@@ -3654,7 +3685,16 @@ function buildDonutChart(monthTxns) {
     groups[cat.name].amount += Math.abs(parseFloat(t.amount));
   });
 
-  const sorted = Object.entries(groups).sort((a,b) => b[1].amount - a[1].amount).slice(0, 10);
+  // Show the biggest categories individually and roll the rest into one wedge,
+  // so the donut always totals the full month's spending
+  const allSorted = Object.entries(groups).sort((a,b) => b[1].amount - a[1].amount);
+  const sorted = allSorted.slice(0, DONUT_MAX_SLICES);
+  const rollupLabel = allSorted.length > DONUT_MAX_SLICES
+    ? `Other (${allSorted.length - DONUT_MAX_SLICES})` : null;
+  if (rollupLabel) {
+    const restAmount = allSorted.slice(DONUT_MAX_SLICES).reduce((s,[,v]) => s + v.amount, 0);
+    sorted.push([rollupLabel, { amount: restAmount, color: '#64748b' }]);
+  }
 
   if (charts.donut) charts.donut.destroy();
   const ctx = document.getElementById('chart-donut').getContext('2d');
@@ -3687,7 +3727,7 @@ function buildDonutChart(monthTxns) {
         tooltip: {
           callbacks: {
             label: ctx => ` ${ctx.label}: ${fmtFull(ctx.raw)}`,
-            afterLabel: () => '  Click to view transactions →'
+            afterLabel: ctx => ctx.label === rollupLabel ? '' : '  Click to view transactions →'
           }
         }
       },
@@ -4110,7 +4150,13 @@ function loadSpending() {
   if (charts.spendingDonut) charts.spendingDonut.destroy();
   const ctx = document.getElementById('chart-spending-donut').getContext('2d');
   if (catsSorted.length) {
-    const top = catsSorted.slice(0, 8);
+    const top = catsSorted.slice(0, DONUT_MAX_SLICES);
+    const rollupLabel = catsSorted.length > DONUT_MAX_SLICES
+      ? `Other (${catsSorted.length - DONUT_MAX_SLICES})` : null;
+    if (rollupLabel) {
+      const restTotal = catsSorted.slice(DONUT_MAX_SLICES).reduce((s,[,v]) => s + v.total, 0);
+      top.push([rollupLabel, { total: restTotal, color: '#64748b' }]);
+    }
     const labelToCatId = {};
     state.categories.forEach(c => { labelToCatId[c.name] = c.id; });
     const currentMonth = document.getElementById('spending-month').value;
@@ -4128,7 +4174,7 @@ function loadSpending() {
           tooltip: {
             callbacks: {
               label: ctx => ` ${ctx.label}: ${fmtFull(ctx.raw)}`,
-              afterLabel: () => '  Click to view transactions →'
+              afterLabel: ctx => ctx.label === rollupLabel ? '' : '  Click to view transactions →'
             }
           }
         },
