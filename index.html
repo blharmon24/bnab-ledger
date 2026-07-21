@@ -1082,7 +1082,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.21.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.21.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3522,17 +3522,21 @@ function renderDashboardBudgets(monthTxns) {
   el.innerHTML = summaryHtml + barsHtml + unbudgetedHtml;
 }
 
-// Writes a "+$X vs last month" sub-line under a stat card, colored by whether
-// the change is a good one for that stat.
-function setMtdSub(id, diff, higherIsGood) {
+// Writes a "+$X vs Jun 1–21" sub-line under a stat card, colored by whether the
+// change is a good one for that stat. The comparison window is named explicitly
+// rather than said as "vs last month", which reads as the whole month and hides
+// the fact that a partial month is being compared against the same day range.
+function setMtdSub(id, current, previous, higherIsGood, thisLabel, prevLabel) {
   const el = document.getElementById(id);
   if (!el) return;
+  const diff = current - previous;
+  el.title = `${thisLabel}: ${fmtFull(current)}  ·  ${prevLabel}: ${fmtFull(previous)}`;
   if (Math.abs(diff) < 0.5) {
-    el.textContent = 'same as last month';
+    el.textContent = `same as ${prevLabel}`;
     el.style.color = 'var(--muted)';
     return;
   }
-  el.textContent = `${diff >= 0 ? '+' : ''}${fmt(diff)} vs last month`;
+  el.textContent = `${diff >= 0 ? '+' : ''}${fmt(diff)} vs ${prevLabel}`;
   el.style.color = (diff > 0) === higherIsGood ? 'var(--green)' : 'var(--red)';
 }
 
@@ -3559,8 +3563,19 @@ function loadDashboard() {
   const dayOfMonth = now.getDate();
   const lastMonthMTD = state.allTransactions.filter(t =>
     t.date.startsWith(lastMonth) && parseInt(t.date.slice(8, 10), 10) <= dayOfMonth);
-  const incomeDiff = income - sumIncome(lastMonthMTD);
-  const spendingDiff = spending - sumSpending(lastMonthMTD);
+  const prevIncome = sumIncome(lastMonthMTD);
+  const prevSpending = sumSpending(lastMonthMTD);
+
+  // "Jun 1–21" / "Jul 1–21" — rebuilt each load, so the range tracks today's date
+  const monthAbbr = (ym) => new Date(ym + '-01T12:00:00').toLocaleDateString('en-US', { month: 'short' });
+  const rangeLabel = (ym) => {
+    const [y, m] = ym.split('-').map(Number);
+    // Clamp to the month's real length so e.g. Mar 31 doesn't label "Feb 1–31"
+    const end = Math.min(dayOfMonth, new Date(y, m, 0).getDate());
+    return end === 1 ? `${monthAbbr(ym)} 1` : `${monthAbbr(ym)} 1–${end}`;
+  };
+  const thisRange = rangeLabel(thisMonth);
+  const prevRange = rangeLabel(lastMonth);
 
   // Net worth
   const netWorth = calcNetWorthAsOf(today());
@@ -3576,8 +3591,8 @@ function loadDashboard() {
   document.getElementById('stat-income').textContent = fmt(income);
   document.getElementById('stat-spending').textContent = fmt(spending);
   // higherIsGood: more income is good, more spending is not
-  setMtdSub('stat-income-sub', incomeDiff, true);
-  setMtdSub('stat-spending-sub', spendingDiff, false);
+  setMtdSub('stat-income-sub', income, prevIncome, true, thisRange, prevRange);
+  setMtdSub('stat-spending-sub', spending, prevSpending, false, thisRange, prevRange);
   document.getElementById('stat-savings').textContent = fmt(savings);
   document.getElementById('stat-savings').className = 'stat-value ' + (savings >= 0 ? 'stat-positive' : 'stat-negative');
 
