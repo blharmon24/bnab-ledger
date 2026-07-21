@@ -824,6 +824,41 @@
   }
   .inline-cat-clear:hover { color: var(--red); }
 
+  .trend-cat-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 6px;
+    z-index: 500;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: 250px;
+    max-height: 320px;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    padding: 6px;
+  }
+  .trend-cat-dropdown.open { display: block; }
+  .trend-cat-presets {
+    display: flex;
+    gap: 6px;
+    padding: 0 2px 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .trend-cat-presets span {
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .trend-cat-presets span:hover { background: rgba(124,106,247,0.14); color: var(--accent); }
+
   .report-tab {
     padding: 7px 16px;
     border: none;
@@ -1082,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.21.2</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.21.3</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1380,7 +1415,21 @@
       <div class="card">
         <div class="card-header">
           <div class="card-title">Category Trends</div>
-          <div class="card-badge">top 6 categories · 12 months</div>
+          <div style="display:flex;gap:10px;align-items:center;position:relative">
+            <span class="card-badge">12 months</span>
+            <button class="btn btn-ghost" id="trend-cat-btn" onclick="toggleTrendCatPicker(event)" style="font-size:11px;padding:5px 10px">
+              <span id="trend-cat-label">Top 6</span> ▾
+            </button>
+            <div class="trend-cat-dropdown" id="trend-cat-dropdown">
+              <input type="text" class="inline-cat-search" id="trend-cat-search" placeholder="Search categories…" oninput="renderTrendCatOptions()">
+              <div class="trend-cat-presets">
+                <span onclick="trendCatPreset('top6')">Top 6</span>
+                <span onclick="trendCatPreset('all')">All</span>
+                <span onclick="trendCatPreset('none')">None</span>
+              </div>
+              <div id="trend-cat-options"></div>
+            </div>
+          </div>
         </div>
         <div id="spending-trends-chart" style="height:260px"></div>
       </div>
@@ -4233,12 +4282,14 @@ function loadSpending() {
       <td style="text-align:right" class="amount-neg">${fmtFull(data.total)}</td>
     </tr>`).join('');
 
-  // Build trend lines for top 6 expense categories
-  const top6Ids = catsSorted.slice(0,6).map(([name]) => {
+  // Build trend lines — top 6 expense categories by default, or the user's picks
+  _trendCatTop6 = catsSorted.slice(0,6).map(([name]) => {
     const cat = state.categories.find(c => c.name === name);
     return cat?.id;
   }).filter(Boolean);
-  buildSpendingTrends('spending-trends-chart', top6Ids);
+  initTrendCatPref();
+  renderTrendCatPicker();
+  buildSpendingTrends('spending-trends-chart', trendCatSelectedIds());
 
   // Budget vs actual chart
   buildBudgetTrendChart();
@@ -8936,9 +8987,103 @@ async function exportAllData() {
 // ============================================================
 // SPENDING TRENDS (category trend lines)
 // ============================================================
+// ── Category Trends: which categories to plot ──
+// _trendCatIds === null means "auto": follow the top 6 for the selected month.
+let _trendCatIds  = null;
+let _trendCatTop6 = [];
+let _trendCatPrefLoaded = false;
+const TREND_CAT_KEY = 'spending_trend_categories';
+
+function trendCatSelectedIds() {
+  const known = new Set(state.categories.map(c => c.id));
+  return (_trendCatIds === null ? _trendCatTop6 : _trendCatIds).filter(id => known.has(id));
+}
+
+async function initTrendCatPref() {
+  if (_trendCatPrefLoaded) return;
+  _trendCatPrefLoaded = true;
+  const saved = await loadSetting(TREND_CAT_KEY, null);
+  if (!Array.isArray(saved)) return;   // 'auto' or unset — leave on top 6
+  _trendCatIds = saved;
+  renderTrendCatPicker();
+  buildSpendingTrends('spending-trends-chart', trendCatSelectedIds());
+}
+
+function toggleTrendCatPicker(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('trend-cat-dropdown');
+  dd.classList.toggle('open');
+  if (dd.classList.contains('open')) {
+    const search = document.getElementById('trend-cat-search');
+    search.value = '';
+    renderTrendCatOptions();
+    search.focus();
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('trend-cat-dropdown');
+  if (dd && dd.classList.contains('open') &&
+      !e.target.closest('#trend-cat-dropdown') && !e.target.closest('#trend-cat-btn')) {
+    dd.classList.remove('open');
+  }
+});
+
+function renderTrendCatPicker() {
+  const label = document.getElementById('trend-cat-label');
+  if (!label) return;
+  const n = trendCatSelectedIds().length;
+  label.textContent = _trendCatIds === null ? 'Top 6' : `${n} categor${n === 1 ? 'y' : 'ies'}`;
+  renderTrendCatOptions();
+}
+
+function renderTrendCatOptions() {
+  const box = document.getElementById('trend-cat-options');
+  if (!box) return;
+  const q   = (document.getElementById('trend-cat-search')?.value || '').toLowerCase();
+  const sel = new Set(trendCatSelectedIds());
+  const cats = state.categories
+    .filter(c => !c.is_income)
+    .filter(c => !q || c.name.toLowerCase().includes(q))
+    .sort((a,b) => a.name.localeCompare(b.name));
+  if (!cats.length) { box.innerHTML = '<div class="inline-cat-group">No categories</div>'; return; }
+  box.innerHTML = cats.map(c => `
+    <label class="inline-cat-option${sel.has(c.id) ? ' selected' : ''}">
+      <input type="checkbox" ${sel.has(c.id) ? 'checked' : ''} onchange="toggleTrendCat('${c.id}', this.checked)" style="width:auto;margin:0">
+      <span class="color-dot" style="background:${c.color}"></span>${escHtml(c.name)}
+    </label>`).join('');
+}
+
+function toggleTrendCat(catId, on) {
+  const cur = new Set(trendCatSelectedIds());
+  if (on) cur.add(catId); else cur.delete(catId);
+  setTrendCats([...cur]);
+}
+
+function trendCatPreset(kind) {
+  if (kind === 'top6')     setTrendCats(null);
+  else if (kind === 'all') setTrendCats(state.categories.filter(c => !c.is_income).map(c => c.id));
+  else                     setTrendCats([]);
+}
+
+function setTrendCats(ids) {
+  _trendCatIds = ids;
+  _trendCatPrefLoaded = true;   // don't let a late load clobber an explicit choice
+  saveSetting(TREND_CAT_KEY, ids === null ? 'auto' : ids);
+  renderTrendCatPicker();
+  buildSpendingTrends('spending-trends-chart', trendCatSelectedIds());
+}
+
 function buildSpendingTrends(containerId, categoryIds) {
   const container = document.getElementById(containerId);
-  if (!container || !categoryIds.length) return;
+  if (!container) return;
+
+  if (charts[containerId]) { charts[containerId].destroy(); delete charts[containerId]; }
+  if (!categoryIds.length) {
+    container.style.height = '260px';
+    container.innerHTML = '<div class="loading">No categories selected.</div>';
+    return;
+  }
 
   const months = [];
   for (let i = 11; i >= 0; i--) {
@@ -8947,7 +9092,7 @@ function buildSpendingTrends(containerId, categoryIds) {
   }
 
   const catMap = Object.fromEntries(state.categories.map(c => [c.id, c]));
-  const datasets = categoryIds.slice(0, 6).map(catId => {
+  const datasets = categoryIds.map(catId => {
     const cat  = catMap[catId];
     const data = months.map(m =>
       state.allTransactions
@@ -8963,7 +9108,10 @@ function buildSpendingTrends(containerId, categoryIds) {
     };
   });
 
-  if (charts[containerId]) charts[containerId].destroy();
+  // Legend wraps at roughly 4 entries per row; grow the card so the plot keeps its height
+  const legendRows = Math.ceil(datasets.length / 4);
+  container.style.height = (260 + Math.max(0, legendRows - 2) * 18) + 'px';
+
   const canvas = document.createElement('canvas');
   container.innerHTML = '';
   container.appendChild(canvas);
