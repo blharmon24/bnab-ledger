@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.21.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.23.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1171,7 +1171,12 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">Spending This Month</div>
-            <div class="card-badge">by category</div>
+            <select id="donut-slice-count" onchange="onDonutSliceCountChange()" style="width:auto;font-size:12px;padding:4px 8px">
+              <option value="10">Top 10</option>
+              <option value="15">Top 15</option>
+              <option value="20">Top 20</option>
+              <option value="0">All categories</option>
+            </select>
           </div>
           <div class="chart-wrap" style="height:260px">
             <canvas id="chart-donut"></canvas>
@@ -1372,6 +1377,12 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">Distribution</div>
+            <select id="spending-donut-slice-count" onchange="loadSpending()" style="width:auto;font-size:12px;padding:4px 8px">
+              <option value="10">Top 10</option>
+              <option value="15">Top 15</option>
+              <option value="20">Top 20</option>
+              <option value="0">All categories</option>
+            </select>
           </div>
           <div class="chart-wrap" style="height:300px">
             <canvas id="chart-spending-donut"></canvas>
@@ -3694,6 +3705,18 @@ const TRANSFER_CAT_KEYWORDS = ['credit card payment', 'cc payment', 'transfer', 
 // Shared by the dashboard and Spending page donuts so both break out the same categories.
 const DONUT_MAX_SLICES = 10;
 
+// How many categories the dashboard donut breaks out individually, driven by the
+// "Top N / All categories" dropdown in the card header. 0 means show every category.
+let dashboardDonutLimit = DONUT_MAX_SLICES;
+// Cached month transactions so the dropdown can rebuild the donut without reloading the dashboard.
+let _dashDonutTxns = [];
+
+function onDonutSliceCountChange() {
+  const sel = document.getElementById('donut-slice-count');
+  dashboardDonutLimit = parseInt(sel.value, 10) || 0;
+  buildDonutChart(_dashDonutTxns);
+}
+
 function isCCPaymentCategory(catName) {
   if (!catName) return false;
   return TRANSFER_CAT_KEYWORDS.some(kw => catName.toLowerCase().includes(kw));
@@ -3731,6 +3754,7 @@ function isRealIncome(t) {
 
 
 function buildDonutChart(monthTxns) {
+  _dashDonutTxns = monthTxns;
   const catMap = Object.fromEntries(state.categories.map(c => [c.id, { name: c.name, color: c.color }]));
 
   // Exclude transfers AND credit card payment categories to avoid double-counting
@@ -3752,11 +3776,13 @@ function buildDonutChart(monthTxns) {
   // Show the biggest categories individually and roll the rest into one wedge,
   // so the donut always totals the full month's spending
   const allSorted = Object.entries(groups).sort((a,b) => b[1].amount - a[1].amount);
-  const sorted = allSorted.slice(0, DONUT_MAX_SLICES);
-  const rollupLabel = allSorted.length > DONUT_MAX_SLICES
-    ? `Other (${allSorted.length - DONUT_MAX_SLICES})` : null;
+  // dashboardDonutLimit === 0 means "All categories" (no rollup)
+  const limit = dashboardDonutLimit > 0 ? dashboardDonutLimit : allSorted.length;
+  const sorted = allSorted.slice(0, limit);
+  const rollupLabel = allSorted.length > limit
+    ? `Other (${allSorted.length - limit})` : null;
   if (rollupLabel) {
-    const restAmount = allSorted.slice(DONUT_MAX_SLICES).reduce((s,[,v]) => s + v.amount, 0);
+    const restAmount = allSorted.slice(limit).reduce((s,[,v]) => s + v.amount, 0);
     sorted.push([rollupLabel, { amount: restAmount, color: '#64748b' }]);
   }
 
@@ -4214,11 +4240,16 @@ function loadSpending() {
   if (charts.spendingDonut) charts.spendingDonut.destroy();
   const ctx = document.getElementById('chart-spending-donut').getContext('2d');
   if (catsSorted.length) {
-    const top = catsSorted.slice(0, DONUT_MAX_SLICES);
-    const rollupLabel = catsSorted.length > DONUT_MAX_SLICES
-      ? `Other (${catsSorted.length - DONUT_MAX_SLICES})` : null;
+    // Distribution donut: break out the top N categories (0 = All, no rollup),
+    // driven by the dropdown in the card header
+    const spSel = document.getElementById('spending-donut-slice-count');
+    const spLimitRaw = spSel ? parseInt(spSel.value, 10) || 0 : DONUT_MAX_SLICES;
+    const spLimit = spLimitRaw > 0 ? spLimitRaw : catsSorted.length;
+    const top = catsSorted.slice(0, spLimit);
+    const rollupLabel = catsSorted.length > spLimit
+      ? `Other (${catsSorted.length - spLimit})` : null;
     if (rollupLabel) {
-      const restTotal = catsSorted.slice(DONUT_MAX_SLICES).reduce((s,[,v]) => s + v.total, 0);
+      const restTotal = catsSorted.slice(spLimit).reduce((s,[,v]) => s + v.total, 0);
       top.push([rollupLabel, { total: restTotal, color: '#64748b' }]);
     }
     const labelToCatId = {};
