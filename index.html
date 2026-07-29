@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.23.2</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1578,6 +1578,23 @@
           <div class="stat-value" id="inv-day-change">—</div>
           <div class="stat-sub" id="inv-day-change-sub"></div>
         </div>
+      </div>
+
+      <div class="card" id="retirement-card" style="display:none">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Retirement Accounts</div>
+            <div class="card-badge">manual monthly values</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end">
+            <div style="text-align:right">
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Combined Total</div>
+              <div style="font-size:22px;font-weight:700;color:var(--green)" id="retirement-grand-total">—</div>
+            </div>
+            <button class="btn btn-primary" onclick="openRetirementEntry()">Enter Monthly Values</button>
+          </div>
+        </div>
+        <div id="retirement-list"></div>
       </div>
 
       <div class="card">
@@ -2313,6 +2330,29 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-asset-value')">Cancel</button>
       <button class="btn btn-primary" onclick="saveAssetValue()">Save Value</button>
+    </div>
+  </div>
+</div>
+
+<!-- Retirement Monthly Values Modal -->
+<div class="modal-overlay" id="modal-retirement-entry">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <div class="modal-title">Enter Monthly Retirement Values</div>
+      <button class="modal-close" onclick="closeModal('modal-retirement-entry')">✕</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+      Enter the current value of each fund. Values roll up to a per-account total and feed net worth automatically.
+      Funds you leave blank keep their most recent value.
+    </p>
+    <div class="form-group" style="max-width:220px">
+      <label>Value Date</label>
+      <input type="date" id="ret-entry-date" onchange="renderRetEntryPrefill()">
+    </div>
+    <div id="ret-entry-body" style="margin-top:8px;max-height:52vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-retirement-entry')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRetirementValues()">Save Values</button>
     </div>
   </div>
 </div>
@@ -3239,13 +3279,14 @@ async function init() {
   try {
     const loadErrors = [];
     const softFail = (label) => (e) => { console.warn(`Load failed (${label}):`, e?.message); loadErrors.push(label); return []; };
-    const [accounts, categories, transactions, snapshots, holdings, goals] = await Promise.all([
+    const [accounts, categories, transactions, snapshots, holdings, goals, retFunds] = await Promise.all([
       sb.get('accounts', `user_id=eq.${uid}&is_active=eq.true&order=name`),
       sb.get('categories', `user_id=eq.${uid}&order=group_name,name`),
       fetchAllTransactions(),
       sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=500`).catch(softFail('net worth history')),
       sb.get('portfolio_holdings', `user_id=eq.${uid}&order=ticker`).catch(softFail('holdings')),
-      sb.get('savings_goals', `user_id=eq.${uid}&order=sort_order.asc,created_at.asc`).catch(softFail('savings goals'))
+      sb.get('savings_goals', `user_id=eq.${uid}&order=sort_order.asc,created_at.asc`).catch(softFail('savings goals')),
+      sb.get('retirement_fund_values', `user_id=eq.${uid}&order=value_date.asc`).catch(softFail('retirement funds'))
     ]);
 
     state.accounts        = accounts     || [];
@@ -3255,6 +3296,7 @@ async function init() {
     state.snapshots       = snapshots    || [];
     state.holdings        = holdings     || [];
     state.goals           = goals        || [];
+    state.retFunds        = retFunds     || [];
 	    // Global category map used by isDebtPayment()
     window.catMapGlobal = Object.fromEntries((state.categories || []).map(c => [c.id, c]));
 
@@ -4729,6 +4771,8 @@ function _updateHoldingSortHeaders() {
 }
 
 function loadInvestments() {
+  loadRetirement();
+
   const accMap = Object.fromEntries(state.accounts.map(a => [a.id, a.name]));
   const tbody = document.getElementById('holdings-table');
 
@@ -6559,7 +6603,8 @@ function loadManualAssets() {
     }
 
     const hasHolding = holdings.length && (isCrypto || isGold);
-    const showUpdateBtn = !hasHolding;
+    const isRetWithFunds = a.type === 'retirement' && accountHasRetFunds(a.id);
+    const showUpdateBtn = !hasHolding && !isRetWithFunds;
 
     return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:12px">
       <div style="flex:1;min-width:180px">
@@ -6574,6 +6619,7 @@ function loadManualAssets() {
         </div>
         ${lastUpdated ? `<div style="font-size:11px;color:var(--muted)">synced ${lastUpdated}</div>` : ''}
         ${showUpdateBtn ? `<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:6px" onclick="openAssetValueModal('${a.id}')">Update Value</button>` : ''}
+        ${isRetWithFunds ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">managed in Investments → Retirement</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -6646,6 +6692,226 @@ async function refreshAssetHolding(holdingId, accountId) {
     loadManualAssets();
     toast(`${h.ticker} → ${fmtFull(price)}`);
   } catch(e) { toast(`Failed to refresh ${h.ticker}: ${e.message}`, 'error'); }
+}
+
+// ── Retirement Accounts (fund-level monthly values) ──────────────
+// Each retirement-type account holds named sub-funds (e.g. Large Cap Growth,
+// SDBA). Values are entered per month into `retirement_fund_values`; the summed
+// account total is also written to `net_worth_snapshots` so the existing net
+// worth + investment charts pick it up with no special-casing.
+
+function retirementAccounts() {
+  return state.accounts.filter(a => a.type === 'retirement');
+}
+
+function retFundsForAccount(accountId) {
+  return (state.retFunds || []).filter(f => f.account_id === accountId);
+}
+
+// Distinct fund names for an account, in the order they first appeared
+function retFundNames(accountId) {
+  const names = [];
+  retFundsForAccount(accountId)
+    .slice()
+    .sort((a, b) => a.value_date.localeCompare(b.value_date))
+    .forEach(f => { if (!names.includes(f.fund_name)) names.push(f.fund_name); });
+  return names;
+}
+
+// Most recent value for a fund on or before a date (falls back to latest overall)
+function retLatestFundValue(accountId, fundName, onOrBefore) {
+  const rows = retFundsForAccount(accountId).filter(f => f.fund_name === fundName);
+  let pool = onOrBefore ? rows.filter(f => f.value_date <= onOrBefore) : rows.slice();
+  if (!pool.length) pool = rows.slice();
+  pool.sort((a, b) => b.value_date.localeCompare(a.value_date));
+  return pool.length ? parseFloat(pool[0].value) : null;
+}
+
+// Sum of the most-recent value per fund (on or before a date) = account total
+function retAccountTotal(accountId, onOrBefore) {
+  return retFundNames(accountId).reduce((sum, name) => {
+    const v = retLatestFundValue(accountId, name, onOrBefore);
+    return sum + (v || 0);
+  }, 0);
+}
+
+function accountHasRetFunds(accountId) {
+  return (state.retFunds || []).some(f => f.account_id === accountId);
+}
+
+function loadRetirement() {
+  const card = document.getElementById('retirement-card');
+  if (!card) return;
+  const accts = retirementAccounts();
+  if (!accts.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  let grand = 0;
+  const blocks = accts.map(a => {
+    const names = retFundNames(a.id);
+    const acctTotal = retAccountTotal(a.id);
+    grand += acctTotal;
+
+    const allDates = retFundsForAccount(a.id).map(f => f.value_date).sort();
+    const latestDate = allDates.length ? allDates[allDates.length - 1] : null;
+
+    const fundRows = names.length ? names.map(name => {
+      const v = retLatestFundValue(a.id, name);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;color:var(--text)">${escHtml(name)}</span>
+        <span style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:14px;font-weight:500">${v !== null ? fmtFull(v) : '—'}</span>
+          <button class="btn btn-ghost" style="padding:1px 7px;font-size:12px;color:var(--red)" title="Remove this fund and its history"
+            onclick="deleteRetFund('${a.id}','${encodeURIComponent(name)}')">×</button>
+        </span>
+      </div>`;
+    }).join('') : `<div style="color:var(--muted);font-size:13px;padding:8px 0">No funds yet — click "Enter Monthly Values".</div>`;
+
+    return `<div style="padding:16px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <div>
+          <div style="font-weight:600">${escHtml(a.name)}</div>
+          ${a.institution ? `<div style="font-size:12px;color:var(--muted)">${escHtml(a.institution)}</div>` : ''}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:18px;font-weight:700;color:var(--green)">${fmt(acctTotal)}</div>
+          ${latestDate ? `<div style="font-size:11px;color:var(--muted)">as of ${fmtDate(latestDate)}</div>` : ''}
+        </div>
+      </div>
+      ${fundRows}
+    </div>`;
+  }).join('');
+
+  const totalEl = document.getElementById('retirement-grand-total');
+  if (totalEl) totalEl.textContent = fmt(grand);
+  document.getElementById('retirement-list').innerHTML = blocks;
+}
+
+function openRetirementEntry() {
+  if (!retirementAccounts().length) {
+    toast('Create a Retirement-type account first (Accounts page)', 'error');
+    return;
+  }
+  const d = new Date();
+  d.setDate(1);
+  document.getElementById('ret-entry-date').value = localDateStr(d);
+  renderRetEntryPrefill();
+  openModal('modal-retirement-entry');
+}
+
+function retEntryRowHtml(name, value) {
+  return `<div class="ret-entry-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+    <input type="text" class="ret-fund-name" placeholder="Fund name" value="${escHtml(name || '')}" style="flex:1;min-width:0">
+    <input type="number" class="ret-fund-value" step="0.01" min="0" placeholder="0.00" value="${(value !== null && value !== undefined) ? value : ''}" style="width:130px">
+    <button class="btn btn-ghost" style="padding:2px 9px" title="Remove row" onclick="this.closest('.ret-entry-row').remove()">×</button>
+  </div>`;
+}
+
+function renderRetEntryPrefill() {
+  const dateStr = document.getElementById('ret-entry-date').value;
+  const body = document.getElementById('ret-entry-body');
+  const accts = retirementAccounts();
+  body.innerHTML = accts.map(a => {
+    const names = retFundNames(a.id);
+    const rows = names.map(name => retEntryRowHtml(name, retLatestFundValue(a.id, name, dateStr))).join('');
+    return `<div class="ret-entry-account" data-account="${a.id}" style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-weight:600;margin-bottom:10px">${escHtml(a.name)}</div>
+      <div class="ret-entry-rows">${rows}</div>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:6px" onclick="addRetEntryRow('${a.id}')">+ Add Fund</button>
+    </div>`;
+  }).join('');
+}
+
+function addRetEntryRow(accountId) {
+  const rows = document.querySelector(`.ret-entry-account[data-account="${accountId}"] .ret-entry-rows`);
+  if (rows) rows.insertAdjacentHTML('beforeend', retEntryRowHtml('', ''));
+}
+
+async function reloadRetFunds() {
+  const uid = getCurrentUserId();
+  const data = await sb.get('retirement_fund_values', `user_id=eq.${uid}&order=value_date.asc`).catch(() => null);
+  state.retFunds = data || [];
+}
+
+async function _writeRetSnapshots(uid, snapRows) {
+  if (!snapRows.length) return;
+  await sb.query('net_worth_snapshots', {
+    method: 'POST',
+    prefer: 'return=minimal,resolution=merge-duplicates',
+    body: JSON.stringify(snapRows),
+    headers: { 'Prefer': 'return=minimal,resolution=merge-duplicates' }
+  });
+  const snaps = await sb.get('net_worth_snapshots', `user_id=eq.${uid}&order=snapshot_date.desc&limit=500`);
+  state.snapshots = snaps || [];
+}
+
+async function saveRetirementValues() {
+  const dateStr = document.getElementById('ret-entry-date').value;
+  if (!dateStr) { toast('Pick a value date', 'error'); return; }
+  const uid = getCurrentUserId();
+
+  const rows = [];
+  document.querySelectorAll('.ret-entry-account').forEach(block => {
+    const accountId = block.getAttribute('data-account');
+    block.querySelectorAll('.ret-entry-row').forEach(r => {
+      const name = r.querySelector('.ret-fund-name').value.trim();
+      const valStr = r.querySelector('.ret-fund-value').value;
+      if (!name || valStr === '') return;
+      const value = parseFloat(valStr);
+      if (isNaN(value)) return;
+      rows.push({ user_id: uid, account_id: accountId, fund_name: name, value_date: dateStr, value });
+    });
+  });
+
+  if (!rows.length) { toast('Enter at least one fund value', 'error'); return; }
+
+  try {
+    await sb.query('retirement_fund_values?on_conflict=user_id,account_id,fund_name,value_date', {
+      method: 'POST',
+      prefer: 'return=minimal,resolution=merge-duplicates',
+      body: JSON.stringify(rows),
+      headers: { 'Prefer': 'return=minimal,resolution=merge-duplicates' }
+    });
+    await reloadRetFunds();
+
+    // Write each touched account's summed total into net_worth_snapshots
+    const acctIds = [...new Set(rows.map(r => r.account_id))];
+    const snapRows = acctIds.map(id => ({
+      user_id: uid, snapshot_date: dateStr, account_id: id, balance: retAccountTotal(id, dateStr)
+    }));
+    await _writeRetSnapshots(uid, snapRows);
+
+    closeModal('modal-retirement-entry');
+    loadRetirement();
+    loadInvestments();
+    loadNetWorth();
+    toast('Retirement values saved!');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteRetFund(accountId, encName) {
+  const name = decodeURIComponent(encName);
+  if (!confirm(`Delete "${name}" and all of its history from this account? This cannot be undone.`)) return;
+  const uid = getCurrentUserId();
+  try {
+    await sb.delete('retirement_fund_values',
+      `user_id=eq.${uid}&account_id=eq.${accountId}&fund_name=eq.${encodeURIComponent(name)}`);
+    await reloadRetFunds();
+
+    // Re-sync the account snapshot at its most recent remaining entry date
+    const dates = retFundsForAccount(accountId).map(f => f.value_date).sort();
+    if (dates.length) {
+      const latest = dates[dates.length - 1];
+      await _writeRetSnapshots(uid, [{
+        user_id: uid, snapshot_date: latest, account_id: accountId, balance: retAccountTotal(accountId, latest)
+      }]);
+    }
+
+    loadRetirement();
+    loadInvestments();
+    loadNetWorth();
+    toast('Fund removed');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 
 async function buildSatsChart() {
