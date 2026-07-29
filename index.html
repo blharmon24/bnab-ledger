@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -6835,7 +6835,7 @@ async function reloadRetFunds() {
 
 async function _writeRetSnapshots(uid, snapRows) {
   if (!snapRows.length) return;
-  await sb.query('net_worth_snapshots', {
+  await sb.query('net_worth_snapshots?on_conflict=snapshot_date,account_id', {
     method: 'POST',
     prefer: 'return=minimal,resolution=merge-duplicates',
     body: JSON.stringify(snapRows),
