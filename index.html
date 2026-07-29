@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.2</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.3</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1130,6 +1130,14 @@
       <strong style="display:block;margin-bottom:4px">Balance Alert</strong>
       <div id="balance-alert-body"></div>
       <button onclick="dismissBalanceAlerts()" style="position:absolute;top:10px;right:14px;background:none;border:none;color:#fecaca;font-size:18px;cursor:pointer;line-height:1">✕</button>
+    </div>
+
+    <!-- RETIREMENT MONTHLY REMINDER BANNER -->
+    <div id="retirement-reminder-banner" style="display:none;background:#78350f;color:#fde68a;padding:14px 20px;font-size:13px;line-height:1.6;position:relative">
+      <strong style="display:block;margin-bottom:2px">New month — time to hand-enter your retirement account numbers</strong>
+      <div style="opacity:0.9">Enter this month's fund values so your net worth stays current.</div>
+      <button class="btn" style="margin-top:10px;background:#fde68a;color:#78350f;font-weight:600;padding:5px 14px;font-size:12px" onclick="goEnterRetirement()">Enter values now</button>
+      <button onclick="dismissRetirementReminder()" title="Dismiss for this month" style="position:absolute;top:10px;right:14px;background:none;border:none;color:#fde68a;font-size:18px;cursor:pointer;line-height:1">✕</button>
     </div>
 
     <!-- DASHBOARD -->
@@ -3351,6 +3359,9 @@ async function init() {
 
     // Show any pending balance alerts from nightly sync
     checkPendingAlerts();
+
+    // Remind the user to hand-enter retirement values at the start of a month
+    updateRetirementReminder();
 
     // Surface partial-load failures so users don't trust incomplete figures
     if (loadErrors.length) {
@@ -6885,6 +6896,7 @@ async function saveRetirementValues() {
     loadRetirement();
     loadInvestments();
     loadNetWorth();
+    updateRetirementReminder();
     toast('Retirement values saved!');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
@@ -6912,6 +6924,41 @@ async function deleteRetFund(accountId, encName) {
     loadNetWorth();
     toast('Fund removed');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Monthly "enter your retirement numbers" reminder banner ──────
+function _currentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Show the banner when the user has retirement accounts but hasn't entered
+// this month's fund values yet — unless they've dismissed it for this month.
+async function updateRetirementReminder() {
+  const banner = document.getElementById('retirement-reminder-banner');
+  if (!banner) return;
+
+  if (!retirementAccounts().length) { banner.style.display = 'none'; return; }
+
+  const mk = _currentMonthKey();
+  const enteredThisMonth = (state.retFunds || []).some(f => (f.value_date || '').slice(0, 7) === mk);
+  if (enteredThisMonth) { banner.style.display = 'none'; return; }
+
+  const dismissed = await loadSetting('retirement_reminder_dismissed', null);
+  if (dismissed === mk) { banner.style.display = 'none'; return; }
+
+  banner.style.display = '';
+}
+
+async function dismissRetirementReminder() {
+  const banner = document.getElementById('retirement-reminder-banner');
+  if (banner) banner.style.display = 'none';
+  await saveSetting('retirement_reminder_dismissed', _currentMonthKey());
+}
+
+function goEnterRetirement() {
+  showPage('investments');
+  setTimeout(openRetirementEntry, 200);
 }
 
 async function buildSatsChart() {
