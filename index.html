@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.4</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1603,6 +1603,21 @@
           </div>
         </div>
         <div id="retirement-list"></div>
+      </div>
+
+      <div class="card" id="retirement-history-card" style="display:none">
+        <div class="card-header">
+          <div class="card-title">Retirement — History</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" id="rethist-combined" onclick="setRetHistoryView('combined')">Combined</button>
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" id="rethist-account" onclick="setRetHistoryView('account')">By Account</button>
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px" id="rethist-fund" onclick="setRetHistoryView('fund')">By Fund</button>
+          </div>
+        </div>
+        <div style="position:relative;height:280px">
+          <canvas id="chart-retirement-history"></canvas>
+        </div>
+        <div id="retirement-history-empty" style="display:none;color:var(--muted);font-size:13px;padding:12px 4px"></div>
       </div>
 
       <div class="card">
@@ -6752,9 +6767,14 @@ function accountHasRetFunds(accountId) {
 
 function loadRetirement() {
   const card = document.getElementById('retirement-card');
+  const histCard = document.getElementById('retirement-history-card');
   if (!card) return;
   const accts = retirementAccounts();
-  if (!accts.length) { card.style.display = 'none'; return; }
+  if (!accts.length) {
+    card.style.display = 'none';
+    if (histCard) histCard.style.display = 'none';
+    return;
+  }
   card.style.display = '';
 
   let grand = 0;
@@ -6796,6 +6816,9 @@ function loadRetirement() {
   const totalEl = document.getElementById('retirement-grand-total');
   if (totalEl) totalEl.textContent = fmt(grand);
   document.getElementById('retirement-list').innerHTML = blocks;
+
+  if (histCard) histCard.style.display = '';
+  setRetHistoryView(_retHistoryView);
 }
 
 function openRetirementEntry() {
@@ -6924,6 +6947,111 @@ async function deleteRetFund(accountId, encName) {
     loadNetWorth();
     toast('Fund removed');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ── Retirement history chart (combined / by account / by fund) ───
+let _retHistoryView = 'combined';
+const RET_PALETTE = ['#6d6af7','#22c55e','#fbbf24','#ef4444','#06b6d4','#a78bfa','#ec4899','#14b8a6','#f97316','#84cc16','#3b82f6','#eab308'];
+
+// Month buckets from the earliest fund entry through the current month.
+// Each bucket carries the last-day-of-month date used for as-of lookups.
+function _retHistoryMonths() {
+  const dates = (state.retFunds || []).map(f => f.value_date).filter(Boolean).sort();
+  if (!dates.length) return [];
+  const first = new Date(dates[0] + 'T12:00:00');
+  const now = new Date();
+  const months = [];
+  const d = new Date(first.getFullYear(), first.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 1);
+  while (d <= end) {
+    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    months.push({
+      label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+      endStr: localDateStr(monthEnd)
+    });
+    d.setMonth(d.getMonth() + 1);
+  }
+  return months;
+}
+
+function setRetHistoryView(view) {
+  _retHistoryView = view;
+  ['combined', 'account', 'fund'].forEach(v => {
+    const btn = document.getElementById('rethist-' + v);
+    if (btn) btn.style.background = v === view ? 'var(--surface3)' : '';
+  });
+  buildRetirementHistoryChart(view);
+}
+
+function buildRetirementHistoryChart(view = _retHistoryView) {
+  const canvas = document.getElementById('chart-retirement-history');
+  if (!canvas) return;
+  const emptyEl = document.getElementById('retirement-history-empty');
+
+  if (charts.retHistory) { charts.retHistory.destroy(); charts.retHistory = null; }
+
+  const months = _retHistoryMonths();
+  if (!months.length) {
+    canvas.style.display = 'none';
+    if (emptyEl) { emptyEl.style.display = ''; emptyEl.textContent = 'No history yet — your first month appears here once you save this month’s values.'; }
+    return;
+  }
+  canvas.style.display = '';
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  const labels = months.map(m => m.label);
+  const accts = retirementAccounts();
+  let raw = [];
+
+  if (view === 'account') {
+    raw = accts.map(a => ({ label: a.name, data: months.map(m => retAccountTotal(a.id, m.endStr)) }));
+  } else if (view === 'fund') {
+    accts.forEach(a => {
+      retFundNames(a.id).forEach(name => {
+        raw.push({ label: `${name} (${a.name})`, data: months.map(m => retLatestFundValue(a.id, name, m.endStr) || 0) });
+      });
+    });
+  } else { // combined
+    raw = [{ label: 'Combined', data: months.map(m => accts.reduce((s, a) => s + retAccountTotal(a.id, m.endStr), 0)) }];
+  }
+
+  const isCombined = view === 'combined';
+  const datasets = raw.map((ds, i) => {
+    const color = isCombined ? '#fbbf24' : RET_PALETTE[i % RET_PALETTE.length];
+    return {
+      label: ds.label,
+      data: ds.data,
+      borderColor: color,
+      backgroundColor: color,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointBackgroundColor: color,
+      fill: false,
+      tension: 0.3
+    };
+  });
+
+  const theme = getChartTheme();
+  charts.retHistory = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: !isCombined, labels: { color: theme.textColor, font: { size: 11 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtFull(ctx.parsed.y)}` } }
+      },
+      scales: {
+        x: { grid: { color: theme.gridColor }, ticks: { color: theme.mutedColor, font: { size: 11 } } },
+        y: {
+          grid: { color: theme.gridColor },
+          ticks: { color: theme.mutedColor, font: { size: 11 }, callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) }
+        }
+      }
+    }
+  });
 }
 
 // ── Monthly "enter your retirement numbers" reminder banner ──────
