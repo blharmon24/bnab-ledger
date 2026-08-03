@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.08.03.2</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.08.03.3</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3594,6 +3594,20 @@ function catCssFill(color, categoryId) {
   return `repeating-linear-gradient(45deg, ${base} 0 3px, ${stripeInkFor(base)} 3px 5px), ${base}`;
 }
 
+// Donut draw order — needs first, wants last, each descending by size, so the
+// striped wedges collect into one arc you can read at a glance. Entries are
+// [label, {id, amount|total}]; the two donuts name their value field
+// differently, hence the fallback. Anything without an id (the "Other" rollup,
+// Uncategorized) sorts with the needs and is appended after this runs.
+function needsFirst(a, b) {
+  const aWant = isDiscretionary(a[1].id) ? 1 : 0;
+  const bWant = isDiscretionary(b[1].id) ? 1 : 0;
+  if (aWant !== bWant) return aWant - bWant;
+  const aVal = a[1].amount != null ? a[1].amount : a[1].total;
+  const bVal = b[1].amount != null ? b[1].amount : b[1].total;
+  return bVal - aVal;
+}
+
 // ── Sparkline ────────────────────────────────────────────────
 function buildSparkline(anchorMonth) {
   const canvas = document.getElementById('sparkline-networth');
@@ -4024,7 +4038,12 @@ function buildDonutChart(monthTxns) {
   const allSorted = Object.entries(groups).sort((a,b) => b[1].amount - a[1].amount);
   // dashboardDonutLimit === 0 means "All categories" (no rollup)
   const limit = dashboardDonutLimit > 0 ? dashboardDonutLimit : allSorted.length;
+  // Which categories get their own wedge is decided by size...
   const sorted = allSorted.slice(0, limit);
+  // ...but the draw order groups needs first and wants last, so the
+  // discretionary share reads as one contiguous arc instead of being
+  // scattered around the ring. Sorts the slice copy, not allSorted.
+  sorted.sort(needsFirst);
   const rollupLabel = allSorted.length > limit
     ? `Other (${allSorted.length - limit})` : null;
   if (rollupLabel) {
@@ -4488,7 +4507,9 @@ function loadSpending() {
     const spSel = document.getElementById('spending-donut-slice-count');
     const spLimitRaw = spSel ? parseInt(spSel.value, 10) || 0 : DONUT_MAX_SLICES;
     const spLimit = spLimitRaw > 0 ? spLimitRaw : catsSorted.length;
+    // Size decides which categories get a wedge; needsFirst decides draw order
     const top = catsSorted.slice(0, spLimit);
+    top.sort(needsFirst);
     const rollupLabel = catsSorted.length > spLimit
       ? `Other (${catsSorted.length - spLimit})` : null;
     if (rollupLabel) {
