@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.08.03.1</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.08.03.2</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -2505,6 +2505,18 @@
           <span style="font-size:11px;color:var(--muted)">Pick a swatch or type any hex code</span>
         </div>
         <div id="color-swatches"></div>
+        <label for="cat-discretionary"
+          style="display:flex;align-items:center;gap:9px;margin-top:12px;padding:9px 11px;background:var(--surface2);
+                 border:1px solid var(--border);border-radius:8px;cursor:pointer;
+                 font-size:12px;text-transform:none;letter-spacing:0;color:var(--text)">
+          <input type="checkbox" id="cat-discretionary" onchange="updateCatPatternPreview()"
+            style="width:16px;height:16px;margin:0;cursor:pointer;flex-shrink:0">
+          <span style="flex:1">Non-essential — a “want”, not a need
+            <span style="display:block;font-size:10px;color:var(--muted);margin-top:2px">Striped in charts so it stands out from essentials</span>
+          </span>
+          <span id="cat-pattern-preview"
+            style="width:40px;height:22px;border-radius:5px;border:1px solid var(--border);flex-shrink:0"></span>
+        </label>
       </div>
       <div class="form-group">
         <label>Type</label>
@@ -3320,6 +3332,7 @@ async function init() {
   // Load auto-categorize rules fresh from DB
   try { await loadRulesFromDB(); } catch(e) { console.warn('Rules load skipped:', e.message); }
   _budgetsCache = null;
+  _discretionaryCache = null;
   const uid = getCurrentUserId();
 
   try {
@@ -3496,6 +3509,91 @@ async function setBudget(categoryId, amount) {
   await saveBudgets(budgets);
 }
 
+// ── Needs vs Wants ───────────────────────────────────────────
+// Categories flagged non-essential render with a 45° stripe overlay so they
+// stand out in charts independent of hue — the distinction survives similar
+// colors, colorblindness and grayscale printing. Stored the same way budgets
+// are: a { categoryId: true } map in user_settings, so no schema change.
+const DISCRETIONARY_KEY = 'discretionary_categories';
+let _discretionaryCache = null;
+
+function loadDiscretionary() {
+  if (_discretionaryCache !== null) return _discretionaryCache;
+  const cached = _settingsCache[DISCRETIONARY_KEY];
+  if (cached) {
+    try { _discretionaryCache = JSON.parse(cached); return _discretionaryCache; }
+    catch(e) {}
+  }
+  try { _discretionaryCache = JSON.parse(localStorage.getItem(DISCRETIONARY_KEY) || '{}'); }
+  catch(e) { _discretionaryCache = {}; }
+  return _discretionaryCache;
+}
+
+async function saveDiscretionary(map) {
+  _discretionaryCache = map;
+  await saveSetting(DISCRETIONARY_KEY, JSON.stringify(map));
+}
+
+function isDiscretionary(categoryId) {
+  return !!(categoryId && loadDiscretionary()[categoryId]);
+}
+
+// Stripe ink that stays visible on both light and dark category colors
+function stripeInkFor(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return 'rgba(255,255,255,0.6)';
+  const n = parseInt(m[1], 16);
+  // Perceived luminance (BT.601) — light fills get dark stripes and vice versa
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum > 0.6 ? 'rgba(0,0,0,0.42)' : 'rgba(255,255,255,0.62)';
+}
+
+// 45° stripe fill for canvas charts. Chart.js 4 accepts a CanvasPattern
+// anywhere it accepts a color, so this drops straight into backgroundColor.
+const _patternCache = {};
+function makePatternFill(color) {
+  if (!color || typeof color !== 'string') return color;
+  if (_patternCache[color]) return _patternCache[color];
+  try {
+    const dpr  = Math.min(window.devicePixelRatio || 1, 2);
+    const tile = 8; // stripe period in CSS px
+    const c = document.createElement('canvas');
+    c.width = c.height = tile * dpr;
+    const x = c.getContext('2d');
+    x.scale(dpr, dpr);
+    x.fillStyle = color;
+    x.fillRect(0, 0, tile, tile);
+    x.strokeStyle = stripeInkFor(color);
+    x.lineWidth = 2.5;
+    x.beginPath();
+    // Three passes so the diagonal meets cleanly across tile edges
+    x.moveTo(-tile/2, tile/2);  x.lineTo(tile/2, -tile/2);
+    x.moveTo(0, tile);          x.lineTo(tile, 0);
+    x.moveTo(tile/2, tile*1.5); x.lineTo(tile*1.5, tile/2);
+    x.stroke();
+    const pat = x.createPattern(c, 'repeat');
+    // Undo the DPR oversampling so the stripe renders at its intended size
+    if (pat && pat.setTransform && window.DOMMatrix) {
+      pat.setTransform(new DOMMatrix([1/dpr, 0, 0, 1/dpr, 0, 0]));
+    }
+    _patternCache[color] = pat || color;
+    return _patternCache[color];
+  } catch(e) { return color; }
+}
+
+// Chart fill for one category — striped if it's a want, flat otherwise
+function catChartFill(color, categoryId) {
+  const base = color || '#64748b';
+  return isDiscretionary(categoryId) ? makePatternFill(base) : base;
+}
+
+// Same treatment for DOM elements (swatches, progress fills), as a CSS value
+function catCssFill(color, categoryId) {
+  const base = color || '#64748b';
+  if (!isDiscretionary(categoryId)) return base;
+  return `repeating-linear-gradient(45deg, ${base} 0 3px, ${stripeInkFor(base)} 3px 5px), ${base}`;
+}
+
 // ── Sparkline ────────────────────────────────────────────────
 function buildSparkline(anchorMonth) {
   const canvas = document.getElementById('sparkline-networth');
@@ -3622,7 +3720,9 @@ function renderDashboardBudgets(monthTxns, viewMonth) {
     const projected  = monthPct > 0 ? catSpent / monthPct : catSpent;
     const willExceed = !over && projected > budget * 1.05; // on track to blow the budget
 
-    let barColor = cat.color || 'var(--accent)';
+    // Striped when the category is a "want"; over/near-budget status colors
+    // below deliberately override it — the warning is the more urgent signal
+    let barColor = catCssFill(cat.color || 'var(--accent)', cat.id);
     let statusText = '';
     let statusColor = 'var(--muted)';
 
@@ -3901,7 +4001,7 @@ function isRealIncome(t) {
 
 function buildDonutChart(monthTxns) {
   _dashDonutTxns = monthTxns;
-  const catMap = Object.fromEntries(state.categories.map(c => [c.id, { name: c.name, color: c.color }]));
+  const catMap = Object.fromEntries(state.categories.map(c => [c.id, { id: c.id, name: c.name, color: c.color }]));
 
   // Exclude transfers AND credit card payment categories to avoid double-counting
   const expenses = monthTxns.filter(t => {
@@ -3915,7 +4015,7 @@ function buildDonutChart(monthTxns) {
   const groups = {};
   expenses.forEach(t => {
     const cat = catMap[t.category_id] || { name: 'Uncategorized', color: '#64748b' };
-    if (!groups[cat.name]) groups[cat.name] = { amount: 0, color: cat.color };
+    if (!groups[cat.name]) groups[cat.name] = { amount: 0, color: cat.color, id: cat.id };
     groups[cat.name].amount += Math.abs(parseFloat(t.amount));
   });
 
@@ -3954,7 +4054,7 @@ function buildDonutChart(monthTxns) {
     type: 'doughnut',
     data: {
       labels: sorted.map(([name]) => name),
-      datasets: [{ data: sorted.map(([,v]) => v.amount), backgroundColor: sorted.map(([,v]) => v.color), borderWidth: 0, hoverOffset: 8 }]
+      datasets: [{ data: sorted.map(([,v]) => v.amount), backgroundColor: sorted.map(([,v]) => catChartFill(v.color, v.id)), borderWidth: 0, hoverOffset: 8 }]
     },
     options: {
       responsive: true, maintainAspectRatio: false, cutout: '65%',
@@ -4350,7 +4450,7 @@ function loadSpending() {
   const byCat = {};
   expenses.forEach(t => {
     const cat = catMap[t.category_id] || { name: 'Uncategorized', group_name: 'Other', color: '#64748b' };
-    if (!byCat[cat.name]) byCat[cat.name] = { group: cat.group_name, color: cat.color, total: 0, count: 0 };
+    if (!byCat[cat.name]) byCat[cat.name] = { group: cat.group_name, color: cat.color, id: cat.id, total: 0, count: 0 };
     byCat[cat.name].total += Math.abs(parseFloat(t.amount));
     byCat[cat.name].count++;
   });
@@ -4403,7 +4503,7 @@ function loadSpending() {
       type: 'doughnut',
       data: {
         labels: top.map(([n]) => n),
-        datasets: [{ data: top.map(([,v]) => v.total), backgroundColor: top.map(([,v]) => v.color), borderWidth: 0, hoverOffset: 8 }]
+        datasets: [{ data: top.map(([,v]) => v.total), backgroundColor: top.map(([,v]) => catChartFill(v.color, v.id)), borderWidth: 0, hoverOffset: 8 }]
       },
       options: {
         responsive: true, maintainAspectRatio: false, cutout: '60%',
@@ -7923,7 +8023,9 @@ function openNewCategoryModal() {
   const currentColor = document.getElementById('cat-color').value || '#6366f1';
   document.getElementById('cat-color-hex').value = currentColor;
   document.getElementById('cat-color-preview').style.background = currentColor;
+  document.getElementById('cat-discretionary').checked = false;
   buildColorSwatches(currentColor);
+  updateCatPatternPreview();
   openModal('modal-category');
 }
 
@@ -7979,12 +8081,14 @@ function applySwatchColor(color) {
   document.getElementById('cat-color-preview').style.background = color;
   // Re-render swatches to update selection highlight
   buildColorSwatches(color);
+  updateCatPatternPreview();
 }
 
 function syncColorFromPicker(value) {
   document.getElementById('cat-color-hex').value = value;
   document.getElementById('cat-color-preview').style.background = value;
   buildColorSwatches(value);
+  updateCatPatternPreview();
 }
 
 function syncColorFromHex(value) {
@@ -7994,7 +8098,19 @@ function syncColorFromHex(value) {
     document.getElementById('cat-color').value = hex;
     document.getElementById('cat-color-preview').style.background = hex;
     buildColorSwatches(hex);
+    updateCatPatternPreview();
   }
+}
+
+// Live swatch showing exactly how this category will render in charts
+function updateCatPatternPreview() {
+  const el = document.getElementById('cat-pattern-preview');
+  if (!el) return;
+  const color = document.getElementById('cat-color').value || '#6366f1';
+  const want  = document.getElementById('cat-discretionary').checked;
+  el.style.background = want
+    ? `repeating-linear-gradient(45deg, ${color} 0 3px, ${stripeInkFor(color)} 3px 5px), ${color}`
+    : color;
 }
 
 function highlightSwatch(color) {
@@ -8050,6 +8166,12 @@ async function saveCategory() {
       else if (budgetToStore > 0) budgets[targetId] = budgetToStore;
       else delete budgets[targetId];
       await saveBudgets(budgets);
+
+      // Save the needs/wants flag alongside it
+      const disc = loadDiscretionary();
+      if (document.getElementById('cat-discretionary').checked) disc[targetId] = true;
+      else delete disc[targetId];
+      await saveDiscretionary(disc);
     }
 
     closeModal('modal-category');
@@ -8084,8 +8206,10 @@ function editCategory(id) {
   }
   updateBudgetInputs();
 
+  document.getElementById('cat-discretionary').checked = isDiscretionary(id);
   populateCatGroupSelect(cat.group_name);
   buildColorSwatches(editColor);
+  updateCatPatternPreview();
   showCategorySpendingPanel(id);
   openModal('modal-category');
 }
@@ -8132,6 +8256,13 @@ async function deleteCategory(id) {
             const budgets = loadBudgets();
             budgets[savedCat.id] = budget;
             await saveBudgets(budgets);
+          }
+
+          // And the needs/wants flag — the restored row has a new id
+          if (isDiscretionary(id)) {
+            const disc = loadDiscretionary();
+            disc[savedCat.id] = true;
+            await saveDiscretionary(disc);
           }
 
           populateSelects();
@@ -8215,9 +8346,11 @@ function loadCategoriesPage() {
               return `
                 <tr>
                   <td>
-                    <div style="width:24px;height:24px;border-radius:6px;background:${cat.color || '#64748b'}"></div>
+                    <div style="width:24px;height:24px;border-radius:6px;background:${catCssFill(cat.color, cat.id)}"></div>
                   </td>
-                  <td><strong>${escHtml(cat.name)}</strong></td>
+                  <td><strong>${escHtml(cat.name)}</strong>${isDiscretionary(cat.id)
+                    ? ` <span title="Non-essential — shown striped in charts" style="font-size:9px;letter-spacing:0.5px;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-left:6px;white-space:nowrap">want</span>`
+                    : ''}</td>
                   <td>
                     <span class="type-badge ${cat.is_income ? 'badge-savings' : 'badge-credit_card'}">
                       ${cat.is_income ? 'income' : 'expense'}
@@ -8227,7 +8360,7 @@ function loadCategoriesPage() {
                   <td style="min-width:160px">
                     <div style="display:flex;align-items:center;gap:10px">
                       <div class="progress-bar" style="flex:1">
-                        <div class="progress-fill" style="width:${(usage/maxUsage*100).toFixed(0)}%;background:${cat.color || '#64748b'}"></div>
+                        <div class="progress-fill" style="width:${(usage/maxUsage*100).toFixed(0)}%;background:${catCssFill(cat.color, cat.id)}"></div>
                       </div>
                       <span style="font-size:11px;color:var(--muted);min-width:24px;text-align:right">${usage}</span>
                     </div>
@@ -10388,6 +10521,7 @@ async function doLogout() {
   state = { accounts:[], categories:[], transactions:[], allTransactions:[], snapshots:[], holdings:[], userId: null };
   clearSettingsCache();
   _budgetsCache = null;
+  _discretionaryCache = null;
   showLoginScreen();
   toast('Signed out');
 }
