@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.07.29.5</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.08.03.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -1147,29 +1147,39 @@
           <div class="page-title">Dashboard</div>
           <div class="page-subtitle" id="dashboard-date"></div>
         </div>
-        <button class="btn btn-primary" onclick="resetTransactionModal();openModal('modal-transaction')">+ Transaction</button>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:4px">
+            <button class="btn btn-ghost" title="Previous month" style="padding:5px 10px;font-size:14px;line-height:1" onclick="stepDashboardMonth(-1)">‹</button>
+            <input type="month" id="dash-month"
+              style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text2);outline:none"
+              onchange="onDashboardMonthChange()">
+            <button class="btn btn-ghost" id="dash-month-next" title="Next month" style="padding:5px 10px;font-size:14px;line-height:1" onclick="stepDashboardMonth(1)">›</button>
+          </div>
+          <button class="btn btn-ghost" id="dash-month-reset" style="padding:5px 10px;font-size:11px;display:none" onclick="resetDashboardMonth()">This month</button>
+          <button class="btn btn-primary" onclick="resetTransactionModal();openModal('modal-transaction')">+ Transaction</button>
+        </div>
       </div>
 
       <div class="stat-grid" id="dashboard-stats">
         <div class="stat-card" style="--accent-color: var(--accent3); position:relative; overflow:hidden">
-          <div class="stat-label">Net Worth</div>
+          <div class="stat-label" id="stat-networth-label">Net Worth</div>
           <div class="stat-value" id="stat-networth">—</div>
           <div class="stat-sub" id="stat-networth-sub">loading...</div>
           <canvas id="sparkline-networth" height="40"
             style="position:absolute;bottom:0;left:0;right:0;width:100%;opacity:0.4;pointer-events:none"></canvas>
         </div>
         <div class="stat-card" style="--accent-color: var(--green)">
-          <div class="stat-label">This Month Income</div>
+          <div class="stat-label" id="stat-income-label">This Month Income</div>
           <div class="stat-value stat-positive" id="stat-income">—</div>
           <div class="stat-sub" id="stat-income-sub">loading...</div>
         </div>
         <div class="stat-card" style="--accent-color: var(--red)">
-          <div class="stat-label">This Month Spending</div>
+          <div class="stat-label" id="stat-spending-label">This Month Spending</div>
           <div class="stat-value stat-negative" id="stat-spending">—</div>
           <div class="stat-sub" id="stat-spending-sub">loading...</div>
         </div>
         <div class="stat-card" style="--accent-color: var(--yellow)">
-          <div class="stat-label">Monthly Savings</div>
+          <div class="stat-label" id="stat-savings-label">Monthly Savings</div>
           <div class="stat-value" id="stat-savings">—</div>
           <div class="stat-sub">income minus expenses</div>
         </div>
@@ -1178,7 +1188,7 @@
       <div class="two-col">
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Spending This Month</div>
+            <div class="card-title" id="donut-card-title">Spending This Month</div>
             <select id="donut-slice-count" onchange="onDonutSliceCountChange()" style="width:auto;font-size:12px;padding:4px 8px">
               <option value="10">Top 10</option>
               <option value="15">Top 15</option>
@@ -3133,6 +3143,19 @@ const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { m
 const localDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const today = () => localDateStr(new Date());
 
+// ── 'YYYY-MM' month-key helpers ──
+const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const currentMonthKey = () => monthKey(new Date());
+// Shift a 'YYYY-MM' by n months. Built from day 1 so it never trips the
+// setMonth() overflow bug (Mar 31 minus one month lands in March, not February).
+const shiftMonthKey = (ym, delta) => {
+  const [y, m] = ym.split('-').map(Number);
+  return monthKey(new Date(y, m - 1 + delta, 1));
+};
+const daysInMonthKey = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+const lastDayOfMonthKey = (ym) => `${ym}-${String(daysInMonthKey(ym)).padStart(2,'0')}`;
+const monthKeyLabel = (ym, opts) => new Date(ym + '-01T12:00:00').toLocaleDateString('en-US', opts || { month:'long', year:'numeric' });
+
 function escHtml(str) {
   if (!str) return '';
   return String(str)
@@ -3474,14 +3497,15 @@ async function setBudget(categoryId, amount) {
 }
 
 // ── Sparkline ────────────────────────────────────────────────
-function buildSparkline() {
+function buildSparkline(anchorMonth) {
   const canvas = document.getElementById('sparkline-networth');
   if (!canvas) return;
+  const anchor = anchorMonth || currentMonthKey();
 
-  // 6 monthly data points
+  // 6 monthly data points, ending at the month being viewed
   const points = [];
   for (let i = 5; i >= 0; i--) {
-    points.push(calcNetWorthAsOf(firstOfMonth(i)).netWorth);
+    points.push(calcNetWorthAsOf(`${shiftMonthKey(anchor, -i)}-01`).netWorth);
   }
 
   if (charts.sparkline) charts.sparkline.destroy();
@@ -3512,11 +3536,14 @@ function buildSparkline() {
 }
 
 // ── Dashboard budget progress bars ───────────────────────────
-function renderDashboardBudgets(monthTxns) {
+function renderDashboardBudgets(monthTxns, viewMonth) {
   const now = new Date();
-  const monthLabel = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const dayOfMonth  = now.getDate();
+  const ym = viewMonth || currentMonthKey();
+  const isCurrentMonth = ym === currentMonthKey();
+  const monthLabel  = monthKeyLabel(ym);
+  const daysInMonth = daysInMonthKey(ym);
+  // A month that's already closed is 100% elapsed, so its projections read as final
+  const dayOfMonth  = isCurrentMonth ? now.getDate() : daysInMonth;
   const monthPct    = dayOfMonth / daysInMonth; // how far through the month we are
 
   const el = document.getElementById('dashboard-budgets');
@@ -3668,9 +3695,56 @@ function setMtdSub(id, current, previous, higherIsGood, thisLabel, prevLabel) {
   el.style.color = (diff > 0) === higherIsGood ? 'var(--green)' : 'var(--red)';
 }
 
+// The month the dashboard is showing, as 'YYYY-MM'. Defaults to the current
+// month; the picker in the page header steps back to earlier months so a month
+// that just closed can still be reviewed while late transactions trickle in.
+let dashboardMonth = null;
+
+function onDashboardMonthChange() {
+  const v = document.getElementById('dash-month').value;
+  if (!v) return;               // picker cleared — keep whatever we were showing
+  dashboardMonth = v;
+  loadDashboard();
+}
+
+function stepDashboardMonth(delta) {
+  dashboardMonth = shiftMonthKey(dashboardMonth || currentMonthKey(), delta);
+  loadDashboard();
+}
+
+function resetDashboardMonth() {
+  dashboardMonth = currentMonthKey();
+  loadDashboard();
+}
+
 function loadDashboard() {
   const now = new Date();
-  const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const curMonth = currentMonthKey();
+  // Never let the picker run past the current month — there's nothing there yet
+  if (!dashboardMonth || dashboardMonth > curMonth) dashboardMonth = curMonth;
+  const thisMonth = dashboardMonth;
+  const isCurrentMonth = thisMonth === curMonth;
+
+  // Sync the header controls to the month actually being shown
+  const picker = document.getElementById('dash-month');
+  if (picker) { picker.value = thisMonth; picker.max = curMonth; }
+  const nextBtn = document.getElementById('dash-month-next');
+  if (nextBtn) { nextBtn.disabled = isCurrentMonth; nextBtn.style.opacity = isCurrentMonth ? '0.35' : ''; }
+  const resetBtn = document.getElementById('dash-month-reset');
+  if (resetBtn) resetBtn.style.display = isCurrentMonth ? 'none' : '';
+  const dateEl = document.getElementById('dashboard-date');
+  if (dateEl) dateEl.textContent = isCurrentMonth
+    ? now.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })
+    : `Viewing ${monthKeyLabel(thisMonth)}`;
+
+  // Stat/card labels name the month once you've stepped off the current one
+  const shortLabel = monthKeyLabel(thisMonth, { month:'long', year:'numeric' });
+  const setLabel = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+  setLabel('stat-income-label',   isCurrentMonth ? 'This Month Income'   : `${shortLabel} Income`);
+  setLabel('stat-spending-label', isCurrentMonth ? 'This Month Spending' : `${shortLabel} Spending`);
+  setLabel('stat-savings-label',  isCurrentMonth ? 'Monthly Savings'     : `${shortLabel} Savings`);
+  setLabel('stat-networth-label', isCurrentMonth ? 'Net Worth'           : `Net Worth — end of ${monthKeyLabel(thisMonth, { month:'short' })}`);
+  setLabel('donut-card-title',    isCurrentMonth ? 'Spending This Month' : `Spending — ${shortLabel}`);
 
   const monthTxns = state.allTransactions.filter(t => t.date.startsWith(thisMonth));
   const catMap2 = Object.fromEntries(state.categories.map(c => [c.id, c]));
@@ -3686,33 +3760,36 @@ function loadDashboard() {
   const spending = sumSpending(monthTxns);
   const savings = income - spending;
 
-  // Same day-range of last month, so a partial month isn't compared to a full one
-  const lastMonth = firstOfMonth(1).slice(0, 7);
-  const dayOfMonth = now.getDate();
+  // Same day-range of the previous month, so a partial month isn't compared to a
+  // full one. A month that has already closed out is compared in full.
+  const lastMonth = shiftMonthKey(thisMonth, -1);
+  const dayOfMonth = isCurrentMonth ? now.getDate() : daysInMonthKey(thisMonth);
   const lastMonthMTD = state.allTransactions.filter(t =>
     t.date.startsWith(lastMonth) && parseInt(t.date.slice(8, 10), 10) <= dayOfMonth);
   const prevIncome = sumIncome(lastMonthMTD);
   const prevSpending = sumSpending(lastMonthMTD);
 
-  // "Jun 1–21" / "Jul 1–21" — rebuilt each load, so the range tracks today's date
-  const monthAbbr = (ym) => new Date(ym + '-01T12:00:00').toLocaleDateString('en-US', { month: 'short' });
+  // "Jun 1–21" / "Jul 1–21" — rebuilt each load, so the range tracks today's date.
+  // A range covering a whole month is named by the month alone ("Jun").
+  const monthAbbr = (ym) => monthKeyLabel(ym, { month: 'short' });
   const rangeLabel = (ym) => {
-    const [y, m] = ym.split('-').map(Number);
     // Clamp to the month's real length so e.g. Mar 31 doesn't label "Feb 1–31"
-    const end = Math.min(dayOfMonth, new Date(y, m, 0).getDate());
+    const dim = daysInMonthKey(ym);
+    const end = Math.min(dayOfMonth, dim);
+    if (end >= dim) return monthAbbr(ym);
     return end === 1 ? `${monthAbbr(ym)} 1` : `${monthAbbr(ym)} 1–${end}`;
   };
   const thisRange = rangeLabel(thisMonth);
   const prevRange = rangeLabel(lastMonth);
 
-  // Net worth
-  const netWorth = calcNetWorthAsOf(today());
-  const lastMonthNW = calcNetWorthAsOf(firstOfMonth(1));
+  // Net worth — as of today for the current month, as of month-end for a past one
+  const netWorth = calcNetWorthAsOf(isCurrentMonth ? today() : lastDayOfMonthKey(thisMonth));
+  const lastMonthNW = calcNetWorthAsOf(`${lastMonth}-01`);
   const nwDiff = netWorth.netWorth - lastMonthNW.netWorth;
 
   document.getElementById('stat-networth').textContent = fmt(netWorth.netWorth);
   document.getElementById('stat-networth-sub').textContent =
-    `${nwDiff >= 0 ? '+' : ''}${fmt(nwDiff)} vs last month`;
+    `${nwDiff >= 0 ? '+' : ''}${fmt(nwDiff)} vs ${isCurrentMonth ? 'last month' : monthAbbr(lastMonth)}`;
   document.getElementById('stat-networth-sub').style.color =
     nwDiff >= 0 ? 'var(--green)' : 'var(--red)';
 
@@ -3724,14 +3801,15 @@ function loadDashboard() {
   document.getElementById('stat-savings').textContent = fmt(savings);
   document.getElementById('stat-savings').className = 'stat-value ' + (savings >= 0 ? 'stat-positive' : 'stat-negative');
 
-  // Recent transactions
-  renderRecentTransactions(state.allTransactions.slice(0, 8));
+  // Recent transactions — latest overall for the current month, latest *within*
+  // the month once you've stepped back (transactions after it aren't relevant)
+  renderRecentTransactions((isCurrentMonth ? state.allTransactions : monthTxns).slice(0, 8));
 
   // Charts
   buildDonutChart(monthTxns);
-  buildBarChart();
-  buildSparkline();
-  renderDashboardBudgets(monthTxns);
+  buildBarChart(thisMonth);
+  buildSparkline(thisMonth);
+  renderDashboardBudgets(monthTxns, thisMonth);
   renderGoalsDashboardCard();
 }
 
@@ -3917,14 +3995,11 @@ function buildDonutChart(monthTxns) {
   });
 }
 
-function buildBarChart() {
+function buildBarChart(anchorMonth) {
   const catMap = Object.fromEntries(state.categories.map(c => [c.id, c]));
+  const anchor = anchorMonth || currentMonthKey();
   const months = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - i);
-    months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
-  }
+  for (let i = 5; i >= 0; i--) months.push(shiftMonthKey(anchor, -i));
 
   const realExpense = (t) => {
     if (t.type !== 'expense') return false;
