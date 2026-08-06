@@ -1117,7 +1117,7 @@
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="exportAllData()">↓ Backup Data</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px" onclick="openChangePasswordModal()">⚿ Change Password</button>
       <button class="btn btn-ghost" style="width:100%;font-size:11px;padding:8px;color:var(--muted)" onclick="doLogout()">Sign Out</button>
-      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.08.03.3</div>
+      <div style="text-align:center;font-size:10px;color:var(--muted);letter-spacing:0.5px">v2026.08.06.1</div>
     </div>
   </nav>
   <div id="sidebar-overlay" onclick="closeMobileMenu()" ontouchend="event.preventDefault();closeMobileMenu()"></div>
@@ -3184,7 +3184,36 @@ function getChartTheme() {
     textColor:  light ? '#374151' : '#e8e8f0',
     mutedColor: light ? '#6b7280' : '#6b6b85',
     gridColor:  light ? 'rgba(200,210,230,0.6)' : 'rgba(42,42,58,0.5)',
+    // Canvas can't resolve var(--surface); charts that draw a "cut-out" border
+    // between wedges need the literal card background for the active theme.
+    surfaceColor: light ? '#ffffff' : '#0f1320',
   };
+}
+
+// Chart.js bakes label/tick/grid colors into the chart when it is constructed —
+// unlike DOM text, canvas pixels don't follow CSS variables. Toggling the theme
+// therefore left every already-built chart wearing the old theme's colors, so in
+// light mode the donut legend and the Income vs Expenses legend kept dark mode's
+// near-white text (#e8e8f0) on a now-white card and were effectively unreadable.
+// Re-run the active page's render so its charts are rebuilt via getChartTheme().
+// Only the pure in-memory renderers are listed: showPage()'s 'import' and
+// 'investments' branches also call simpleFinInit() / saveInvestmentSnapshots(),
+// and a theme toggle must never kick off a bank sync or a DB write.
+function rerenderChartsForTheme() {
+  if (!authToken) return;
+  const active = document.querySelector('.page.active');
+  const page = active ? active.id.replace(/^page-/, '') : 'dashboard';
+  const renderers = {
+    dashboard:   loadDashboard,
+    networth:    loadNetWorth,
+    spending:    loadSpending,
+    investments: loadInvestments,
+    reports:     loadReportsPage,
+    goals:       loadGoalsPage,
+  };
+  const render = renderers[page];
+  if (!render) return;
+  try { render(); } catch (e) { console.error('Theme re-render failed', e); }
 }
 
 function toast(msg, type = 'success') {
@@ -5361,7 +5390,7 @@ function buildAllocationChart(view = 'ticker') {
   if (charts.allocation) charts.allocation.destroy();
   charts.allocation = new Chart(canvas, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: 'var(--surface)' }] },
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: getChartTheme().surfaceColor }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -10520,6 +10549,7 @@ function toggleTheme() {
   const next = current === 'light' ? 'dark' : 'light';
   applyTheme(next);
   localStorage.setItem('bnab_theme', next);
+  rerenderChartsForTheme();
 }
 
 // Restore saved theme on page load
